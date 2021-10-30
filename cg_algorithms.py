@@ -14,22 +14,12 @@ def draw_line(p_list, algorithm):
     x0, y0 = p_list[0]
     x1, y1 = p_list[1]
     result = []
-    if algorithm == 'Naive':
+    if algorithm == 'DDA':
         if x0 == x1:
-            for y in range(y0, y1 + 1):
-                result.append([x0, y])
-        else:
-            if x0 > x1:
-                x0, y0, x1, y1 = x1, y1, x0, y0
-            k = (y1 - y0) / (x1 - x0)
-            for x in range(x0, x1 + 1):
-                result.append([x, int(y0 + k * (x - x0))])
-    elif algorithm == 'DDA':
-        if x0 == x1:
-            for y in range(y0, y1 + 1):
+            for y in range(min(y0, y1), max(y0, y1) + 1):
                 result.append([x0, y])
         elif y0 == y1:
-            for x in range(x0, x1 + 1):
+            for x in range(min(x0, x1), max(x0, x1) + 1):
                 result.append([x, y0])
         else:
             k = (y1 - y0) / (x1 - x0)
@@ -49,10 +39,10 @@ def draw_line(p_list, algorithm):
                     xi += 1 / k
     elif algorithm == 'Bresenham':
         if x0 == x1:
-            for y in range(y0, y1 + 1):
+            for y in range(min(y0, y1), max(y0, y1) + 1):
                 result.append([x0, y])
         elif y0 == y1:
-            for x in range(x0, x1 + 1):
+            for x in range(min(x0, x1), max(x0, x1) + 1):
                 result.append([x, y0])
         else:
             dy, dx, ex = abs(y1 - y0), abs(x1 - x0), 0
@@ -144,8 +134,8 @@ def draw_curve(p_list, algorithm):
         n = len(p_list) - 1
         loc = [[[0, 0]] * (n + 1)] * (n + 1)  # 阶数r从0~n共(n+1)阶，每一阶的点数为(n+1-r)
         loc[0] = p_list  # 初始化0阶点为控制点
-        for v in range(101):
-            u = v / 100  # u取值(0, 1)
+        for v in range(1001):
+            u = v / 1000  # u取值(0, 1)
             for r in range(1, n + 1):  # 从上到下，阶数从1到n
                 for i in range(0, n - r + 1):  # 从左到右
                     loc[r][i] = [(1 - u) * loc[r - 1][i][0] + u * loc[r - 1][i + 1][0],
@@ -160,16 +150,16 @@ def draw_curve(p_list, algorithm):
                   -3 * u ** 3 + 3 * u ** 2 + 3 * u + 1, u ** 3]
             for j in range(4):  # 每条曲线涉及4个控制点
                 point[0] += t[j] * p_list[i + j][0]
-                point[1] += t[j] * p_list[i + j][0]
+                point[1] += t[j] * p_list[i + j][1]
             point[0], point[1] = point[0] / 6, point[1] / 6
             return point
 
         n = len(p_list) - 1  # 控制点从0开始编号
         for i in range(n - 2):  # k=4为阶数，一共n+1-(k-1)=n-2条三次曲线
-            for v in range(101):
-                u = v / 100  # 每条曲线上u从(0, 1)
+            for v in range(1001):
+                u = v / 1000  # 每条曲线上u从(0, 1)
                 p = curve_point(i, u)
-                res += [round(p[0]), round(p[1])]
+                res.append([round(p[0]), round(p[1])])
     return res
 
 

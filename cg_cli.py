@@ -34,13 +34,19 @@ def save_canvas(line):
         if item_type == 'line':
             pixels = alg.draw_line(p_list, algorithm)
             for x, y in pixels:
-                canvas[height - 1 - y, x] = color
+                canvas[y, x] = color
         elif item_type == 'polygon':
-            pass
+            pixels = alg.draw_polygon(p_list, algorithm)
+            for x, y in pixels:
+                canvas[y, x] = color
         elif item_type == 'ellipse':
-            pass
+            pixels = alg.draw_ellipse(p_list)
+            for x, y in pixels:
+                canvas[int(y), int(x)] = color
         elif item_type == 'curve':
-            pass
+            pixels = alg.draw_curve(p_list, algorithm)
+            for x, y in pixels:
+                canvas[y, x] = color
     Image.fromarray(canvas).save(os.path.join(output_dir, save_name + '.bmp'), 'bmp')
 
 
@@ -62,32 +68,65 @@ def draw_line(line):
     item_dict[item_id] = ['line', [[x0, y0], [x1, y1]], algorithm, np.array(pen_color)]
 
 
+# 以下内容均在11月修改
 def draw_polygon(line):
-    pass
+    global item_dict
+    item_id = line[1]
+    p_list = []
+    for i in range(2, len(line) - 2, 2):
+        p_list.append([int(line[i]), int(line[i + 1])])
+    # print(f"poly p_list is {p_list}")
+    algorithm = line[-1]
+    item_dict[item_id] = ['polygon', p_list, algorithm, np.array(pen_color)]
 
 
 def draw_ellipse(line):
-    pass
+    global item_dict
+    item_id = line[1]
+    p_list = [[int(line[2]), int(line[3])], [int(line[4]), int(line[5])]]
+    item_dict[item_id] = ['ellipse', p_list, None, np.array(pen_color)]
 
 
 def draw_curve(line):
-    pass
+    global item_dict
+    item_id = line[1]
+    p_list = []
+    for i in range(2, len(line) - 2, 2):
+        p_list.append([int(line[i]), int(line[i + 1])])
+    algorithm = line[-1]
+    item_dict[item_id] = ['curve', p_list, algorithm, np.array(pen_color)]
 
 
 def translate(line):
-    pass
+    global item_dict
+    item_id = line[1]
+    p_list = item_dict[item_id][1]  # 图元原本的参数
+    dx, dy = int(line[2]), int(line[3])
+    item_dict[item_id][1] = alg.translate(p_list, dx, dy)  # 修改成平移后的参数
 
 
 def rotate(line):
-    pass
+    global item_dict
+    item_id = line[1]
+    p_list = item_dict[item_id][1]  # 图元原本的参数
+    x, y, r = int(line[2]), int(line[3]), float(line[4])
+    item_dict[item_id][1] = alg.rotate(p_list, x, y, r)  # 修改成旋转后的参数
 
 
 def scale(line):
-    pass
+    global item_dict
+    item_id = line[1]
+    p_list = item_dict[item_id][1]  # 图元原本的参数
+    x, y, s = int(line[2]), int(line[3]), float(line[4])
+    item_dict[item_id][1] = alg.scale(p_list, x, y, s)  # 修改成缩放后的参数
 
 
 def clip(line):
-    pass
+    global item_dict
+    item_id = line[1]
+    p_list = [item_dict[item_id][1][0], item_dict[item_id][1][1]]  # 图元原本的参数，p_list是线段的起点和终点
+    x_min, y_min, x_max, y_max, algorithm = int(line[2]), int(line[3]), int(line[4]), int(line[5]), line[6]
+    item_dict[item_id][1] = alg.clip(p_list, x_min, y_min, x_max, y_max, algorithm)  # 修改成裁剪后的参数
 
 
 func_dict = {
