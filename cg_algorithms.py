@@ -245,6 +245,7 @@ def clip(p_list, x_min, y_min, x_max, y_max, algorithm):
             code |= 1
         return code
 
+
     if algorithm == 'Cohen-Sutherland':
         c1, c2 = encode(x1, y1), encode(x2, y2)
         if c1 == 0 and c2 == 0:  # 全部保留
