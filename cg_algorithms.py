@@ -102,34 +102,39 @@ def draw_ellipse(p_list):
     result = []
     x0, y0 = p_list[0]
     x1, y1 = p_list[1]
-    a, b = abs(x1 - x0) / 2, abs(y0 - y1) / 2
+    a, b = int(abs(x1 - x0) / 2), int(abs(y0 - y1) / 2)
+    a2, b2 = a * a, b * b
     x, y = 0, b
-    xc, yc = (x0 + x1) / 2, (y0 + y1) / 2  # vector need to be added
-    p1k = b * b * (x + 1) ** 2 + a * a * (y - 1 / 2) ** 2 - a * a * b * b
-    while b * b * x <= a * a * y:  # start in region 1
-        if xc + x and yc + y:
-            result += [[xc + x, yc + y], [xc + x, yc - y], [xc - x, yc + y], [xc - x, yc - y]]
+    xc, yc = int((x0 + x1) / 2), int((y0 + y1) / 2)  # vector need to be added
+    # p_k = b2 * pow((x + 1), 2) + a2 * pow((y - 1 / 2), 2) - a2 * b2
+    p_k = b2 - a2 * y + a2 / 4
+    result.append([x, y])
+    while 2 * b2 * x < 2 * a2 * y:
+        if p_k < 0:
+            p_k = p_k + 2 * b2 * x + 3 * b2
         else:
-            result += [[xc + x, yc + y]]
-        if p1k >= 0:
-            p1k += 2 * b * b * x - 2 * a * a * y + 2 * a * a + 3 * b * b
-            x, y = x + 1, y - 1
+            p_k = p_k + 2 * b2 * x - 2 * a2 * y + 2 * a2 + 3 * b2
+            y -= 1
+        x += 1
+        result.append([x, y])
+    p_k = b2 * pow((x + 1 / 2), 2) + a2 * pow((y - 1), 2) - a2 * b2
+    while y > 0:
+        if p_k > 0:
+            p_k = p_k - 2 * a2 * y + 3 * a2
         else:
-            p1k += 2 * b * b * x + 3 * b * b
-            x, y = x + 1, y
+            x += 1
+            p_k = p_k + 2 * b2 * x - 2 * a2 * y + 2 * b2 + 3 * a2
+        y -= 1
+        result.append([x, y])
 
-    p2k = b * b * (x + 1 / 2) ** 2 + a * a * (y - 1) ** 2 - a * a * b * b
-    while y >= 0:  # start in region 2
-        if xc + x and yc + y:
-            result += [[xc + x, yc + y], [xc + x, yc - y], [xc - x, yc + y], [xc - x, yc - y]]
-        else:
-            result += [[xc + x, yc + y]]
-        if p2k >= 0:
-            p2k += -2 * a * a * y + 3 * a * a
-            x, y = x, y - 1
-        else:
-            p2k += 2 * b * b * x - 2 * a * a * y + 2 * b * b + 3 * a * a
-            x, y = x + 1, y - 1
+    result2, result3, result4 = [], [], []
+    for p in result:
+        result2.append([-p[0], p[1]])
+        result3.append([-p[0], -p[1]])
+        result4.append([p[0], -p[1]])
+
+    result += result2 + result3 + result4
+    result = [[p[0] + xc, p[1] + yc] for p in result]
     return result
 
 
@@ -244,7 +249,6 @@ def clip(p_list, x_min, y_min, x_max, y_max, algorithm):
         elif x < x_min:
             code |= 1
         return code
-
 
     if algorithm == 'Cohen-Sutherland':
         c1, c2 = encode(x1, y1), encode(x2, y2)
