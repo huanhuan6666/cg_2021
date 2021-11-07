@@ -14,7 +14,17 @@ def draw_line(p_list, algorithm):
     x0, y0 = p_list[0]
     x1, y1 = p_list[1]
     result = []
-    if algorithm == 'DDA':
+    if algorithm == 'Naive':
+        if x0 == x1:
+            for y in range(y0, y1 + 1):
+                result.append([x0, y])
+        else:
+            if x0 > x1:
+                x0, y0, x1, y1 = x1, y1, x0, y0
+            k = (y1 - y0) / (x1 - x0)
+            for x in range(x0, x1 + 1):
+                result.append([x, int(y0 + k * (x - x0))])
+    elif algorithm == 'DDA':
         if x0 == x1:
             for y in range(min(y0, y1), max(y0, y1) + 1):
                 result.append([x0, y])
