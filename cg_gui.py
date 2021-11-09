@@ -4,8 +4,8 @@
 import sys
 from typing import Optional
 
-from PyQt5 import QtCore
-from PyQt5.QtCore import QRectF
+from PyQt5 import QtCore, QtGui
+from PyQt5.QtCore import QRectF, Qt
 from PyQt5.QtGui import QPainter, QMouseEvent, QColor
 from PyQt5.QtWidgets import (
     QApplication,
@@ -17,7 +17,10 @@ from PyQt5.QtWidgets import (
     QListWidget,
     QHBoxLayout,
     QWidget,
-    QStyleOptionGraphicsItem)
+    QToolBar,
+    QSpinBox,
+    QLabel,
+    QStyleOptionGraphicsItem, QColorDialog)
 
 import cg_algorithms as alg
 
@@ -38,8 +41,11 @@ class MyCanvas(QGraphicsView):
         self.temp_algorithm = ''
         self.temp_id = ''
         self.temp_item = None
-        self.begin = []
-        self.rawList = []
+        self.begin = []  # 图形变换时选中的第一个控制点
+        self.rawList = []  # 图形变换时原图元控制参数
+
+        self.rotate_angel = 0  # 旋转角度
+        self.scale_factor = 1  # 缩放比例
 
     def start_draw_line(self, algorithm, item_id):
         self.status = 'line'
@@ -65,6 +71,21 @@ class MyCanvas(QGraphicsView):
         if self.selected_id == '':  # 还没有选图元不做任何动作
             return
         self.status = 'translate'
+        self.temp_item = self.item_dict[self.selected_id]  # 所要操作的是被选中图元
+        self.rawList = self.temp_item.p_list
+
+    def start_rotate(self):
+        if self.selected_id == '' or \
+                self.item_dict[self.selected_id].item_type == 'ellipse':  # 还没有选图元或者选椭圆不做任何动作
+            return
+        self.status = 'rotate'
+        self.temp_item = self.item_dict[self.selected_id]  # 所要操作的是被选中图元
+        self.rawList = self.temp_item.p_list
+
+    def start_scale(self):
+        if self.selected_id == '':  # 还没有选图元不做任何动作
+            return
+        self.status = 'scale'
         self.temp_item = self.item_dict[self.selected_id]  # 所要操作的是被选中图元
         self.rawList = self.temp_item.p_list
 
@@ -94,12 +115,12 @@ class MyCanvas(QGraphicsView):
         x = int(pos.x())
         y = int(pos.y())
         if self.status == 'line':
-            self.temp_item = MyItem(self.temp_id, self.status, [[x, y], [x, y]], self.temp_algorithm)
+            self.temp_item = MyItem(self.temp_id, self.status, [[x, y], [x, y]], self.temp_algorithm, self.main_window.pen_color)
             self.scene().addItem(self.temp_item)
 
         elif self.status == 'polygon':
             if self.temp_item is None:
-                self.temp_item = MyItem(self.temp_id, self.status, [[x, y], [x, y]], self.temp_algorithm)
+                self.temp_item = MyItem(self.temp_id, self.status, [[x, y], [x, y]], self.temp_algorithm, self.main_window.pen_color)
                 self.scene().addItem(self.temp_item)
             else:
                 if event.button() == QtCore.Qt.RightButton:  # 按下鼠标右键停止绘制多边形
@@ -108,12 +129,12 @@ class MyCanvas(QGraphicsView):
                     self.temp_item.p_list.append([x, y])  # 按左键表示继续增加本多边形的参数点
 
         elif self.status == 'ellipse':
-            self.temp_item = MyItem(self.temp_id, self.status, [[x, y], [x, y]])
+            self.temp_item = MyItem(self.temp_id, self.status, [[x, y], [x, y]], self.main_window.pen_color)
             self.scene().addItem(self.temp_item)
 
         elif self.status == 'curve':
             if self.temp_item is None:
-                self.temp_item = MyItem(self.temp_id, self.status, [[x, y], [x, y]], self.temp_algorithm)
+                self.temp_item = MyItem(self.temp_id, self.status, [[x, y], [x, y]], self.temp_algorithm, self.main_window.pen_color)
                 self.scene().addItem(self.temp_item)
             else:
                 if event.button() == QtCore.Qt.RightButton:  # 按下鼠标右键停止绘制多边形
@@ -123,6 +144,12 @@ class MyCanvas(QGraphicsView):
 
         elif self.status == 'translate':
             self.begin = [x, y]
+        elif self.status == 'rotate':
+            self.begin = [x, y]
+            self.rotate_angel = 0  # 每次选择新的旋转中心角度清零
+        elif self.status == 'scale':
+            self.begin = [x, y]
+            self.scale_factor = 1  # 每次选择新的旋转中心角度清零
 
         self.updateScene([self.sceneRect()])
         super().mousePressEvent(event)
@@ -144,7 +171,11 @@ class MyCanvas(QGraphicsView):
             if self.temp_item is not None:
                 self.temp_item.p_list[-1] = [x, y]
         elif self.status == 'translate':
-            self.temp_item.p_list = alg.translate(self.rawList, x-self.begin[0], y-self.begin[1])
+            self.temp_item.p_list = alg.translate(self.rawList, x - self.begin[0], y - self.begin[1])
+        elif self.status == 'rotate':
+            pass
+        elif self.status == 'scale':
+            pass
         self.updateScene([self.sceneRect()])
         super().mouseMoveEvent(event)
 
@@ -165,7 +196,26 @@ class MyCanvas(QGraphicsView):
             pass
         elif self.status == 'translate':
             self.rawList = self.temp_item.p_list
+        elif self.status == 'rotate':
+            self.rawList = self.temp_item.p_list
+        elif self.status == 'scale':
+            self.rawList = self.temp_item.p_list
         super().mouseReleaseEvent(event)
+
+    def wheelEvent(self, event: QtGui.QWheelEvent) -> None:  # 鼠标滚轮
+        if self.status == 'rotate':
+            if event.angleDelta().y() > 0:
+                self.rotate_angel -= 1
+            elif event.angleDelta().y() < 0:
+                self.rotate_angel += 1
+            self.temp_item.p_list = alg.rotate(self.rawList, self.begin[0], self.begin[1], self.rotate_angel)
+        elif self.status == 'scale':
+            if event.angleDelta().y() > 0:
+                self.scale_factor += 0.1
+            elif event.angleDelta().y() < 0:
+                self.scale_factor -= 0.1
+            self.temp_item.p_list = alg.scale(self.rawList, self.begin[0], self.begin[1], self.scale_factor)
+        self.updateScene([self.sceneRect()])
 
 
 class MyItem(QGraphicsItem):
@@ -173,7 +223,7 @@ class MyItem(QGraphicsItem):
     自定义图元类，继承自QGraphicsItem
     """
 
-    def __init__(self, item_id: str, item_type: str, p_list: list, algorithm: str = '', parent: QGraphicsItem = None):
+    def __init__(self, item_id: str, item_type: str, p_list: list, algorithm: str = '', color=QColor(0, 0, 0), parent: QGraphicsItem = None):
         """
 
         :param item_id: 图元ID
@@ -188,11 +238,13 @@ class MyItem(QGraphicsItem):
         self.p_list = p_list  # 图元参数
         self.algorithm = algorithm  # 绘制算法，'DDA'、'Bresenham'、'Bezier'、'B-spline'等
         self.selected = False
+        self.color = color #画笔颜色
 
     def paint(self, painter: QPainter, option: QStyleOptionGraphicsItem, widget: Optional[QWidget] = ...) -> None:
         if self.item_type == 'line':
             item_pixels = alg.draw_line(self.p_list, self.algorithm)
             for p in item_pixels:
+                painter.setPen(self.color)
                 painter.drawPoint(*p)
             if self.selected:
                 painter.setPen(QColor(255, 0, 0))
@@ -201,6 +253,7 @@ class MyItem(QGraphicsItem):
         elif self.item_type == 'polygon':
             item_pixels = alg.draw_polygon(self.p_list, self.algorithm)
             for p in item_pixels:
+                painter.setPen(self.color)
                 painter.drawPoint(*p)
             if self.selected:
                 painter.setPen(QColor(255, 0, 0))
@@ -209,6 +262,7 @@ class MyItem(QGraphicsItem):
         elif self.item_type == 'ellipse':
             item_pixels = alg.draw_ellipse(self.p_list)
             for p in item_pixels:
+                painter.setPen(self.color)
                 painter.drawPoint(*p)
             if self.selected:
                 painter.setPen(QColor(255, 0, 0))
@@ -217,6 +271,7 @@ class MyItem(QGraphicsItem):
         elif self.item_type == 'curve':
             item_pixels = alg.draw_curve(self.p_list, self.algorithm)
             for p in item_pixels:
+                painter.setPen(self.color)
                 painter.drawPoint(*p)
             if self.selected:
                 painter.setPen(QColor(255, 0, 0))
@@ -263,7 +318,8 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.item_cnt = 0
-
+        self.set_bezier_num = 4
+        self.set_bspline_num = 3
         # 使用QListWidget来记录已有的图元，并用于选择图元。注：这是图元选择的简单实现方法，更好的实现是在画布中直接用鼠标选择图元
         self.list_widget = QListWidget(self)
         self.list_widget.setMinimumWidth(200)
@@ -275,6 +331,8 @@ class MainWindow(QMainWindow):
         self.canvas_widget.setFixedSize(600, 600)
         self.canvas_widget.main_window = self
         self.canvas_widget.list_widget = self.list_widget
+        # 设置画笔
+        self.pen_color = QColor(0, 0, 0)
 
         # 设置菜单栏
         menubar = self.menuBar()
@@ -307,6 +365,8 @@ class MainWindow(QMainWindow):
         line_naive_act.triggered.connect(self.line_naive_action)
         self.list_widget.currentTextChanged.connect(self.canvas_widget.selection_changed)
         # TODO: 以下内容在11月修改
+        set_pen_act.triggered.connect(self.set_pen_action)
+        reset_canvas_act.triggered.connect(self.reset_canvas_action)
         line_dda_act.triggered.connect(self.line_dda_action)
         line_bresenham_act.triggered.connect(self.line_bresenham_action)
         polygon_dda_act.triggered.connect(self.polygon_dda_action)
@@ -331,10 +391,38 @@ class MainWindow(QMainWindow):
         self.resize(600, 600)
         self.setWindowTitle('CG Demo')
 
+        # self.setbar = QToolBar()
+        # self.addToolBar(Qt.LeftToolBarArea, self.setbar)
+        #
+        # self.bezier_box = QSpinBox()
+        # self.bezier_box.setRange(3, 20)
+        # self.bezier_box.setSingleStep(1)
+        # self.bezier_box.setValue(1)
+        # self.setbar.addWidget(QLabel("Bezier控制点数"))
+        # self.setbar.addWidget(self.bezier_box)
+        # self.setbar.addSeparator()
+        # self.bspline_box = QSpinBox()
+        # self.bspline_box.setRange(4, 20)
+        # self.bspline_box.setSingleStep(1)
+        # self.bspline_box.setValue(2)
+        # self.setbar.addWidget(QLabel("B样条阶数"))
+        # self.setbar.addWidget(self.bspline_box)
+        # self.bezier_box.valueChanged.connect(self.set_bezier_num)
+        # self.bspline_box.valueChanged.connect(self.set_bspline_num)
+
     def get_id(self):
         _id = str(self.item_cnt)
         self.item_cnt += 1
         return _id
+    def reset_canvas_action(self):
+        pass
+
+    def set_pen_action(self):
+        self.pen_color = QColorDialog.getColor()
+        print(f"color is : {self.pen_color}")
+        self.statusBar().showMessage('设置画笔')
+        self.list_widget.clearSelection()
+        self.canvas_widget.clear_selection()
 
     def line_naive_action(self):
         self.canvas_widget.start_draw_line('Naive', self.get_id())
