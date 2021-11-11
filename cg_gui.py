@@ -20,7 +20,7 @@ from PyQt5.QtWidgets import (
     QToolBar,
     QSpinBox,
     QLabel,
-    QStyleOptionGraphicsItem, QColorDialog)
+    QStyleOptionGraphicsItem, QColorDialog, QDialog, QMessageBox, QDialogButtonBox, QSlider, QFormLayout)
 
 import cg_algorithms as alg
 
@@ -50,48 +50,58 @@ class MyCanvas(QGraphicsView):
     def start_draw_line(self, algorithm, item_id):
         self.status = 'line'
         self.temp_algorithm = algorithm
-        self.temp_id = item_id
+        self.temp_id = 'line'+item_id
 
     # TODO: 以下内容为11月新修改
     def start_draw_polygon(self, algorithm, item_id):
         self.status = 'polygon'
         self.temp_algorithm = algorithm
-        self.temp_id = item_id
+        self.temp_id = 'polygon'+item_id
+        self.temp_item = None # 防止p_list沿用上个多边形或者曲线的p_list
 
     def start_draw_ellipse(self, item_id):
         self.status = 'ellipse'
-        self.temp_id = item_id
+        self.temp_id = 'ellipse'+item_id
 
     def start_draw_curve(self, algorithm, item_id):
         self.status = 'curve'
         self.temp_algorithm = algorithm
-        self.temp_id = item_id
+        self.temp_id = 'curve'+item_id
+        self.temp_item = None
 
     def start_translate(self):
-        if self.selected_id == '':  # 还没有选图元不做任何动作
+        if self.selected_id == '':
+            QMessageBox.warning(self, '注意', '请现在右侧选定图元', QMessageBox.Yes, QMessageBox.Yes)
             return
         self.status = 'translate'
         self.temp_item = self.item_dict[self.selected_id]  # 所要操作的是被选中图元
         self.rawList = self.temp_item.p_list
 
     def start_rotate(self):
-        if self.selected_id == '' or \
-                self.item_dict[self.selected_id].item_type == 'ellipse':  # 还没有选图元或者选椭圆不做任何动作
+        if self.selected_id == '':
+            QMessageBox.warning(self, '注意', '请现在右侧选定图元', QMessageBox.Yes, QMessageBox.Yes)
             return
+        if  self.item_dict[self.selected_id].item_type == 'ellipse':  # 还没有选图元或者选椭圆不做任何动作
+            QMessageBox.warning(self, '注意', '椭圆不提供旋转功能', QMessageBox.Yes, QMessageBox.Yes)
+            return
+        # self.begin = []
+        self.rotate_angel = 0 # 从0开始防止上次旋转角度的叠加
         self.status = 'rotate'
         self.temp_item = self.item_dict[self.selected_id]  # 所要操作的是被选中图元
         self.rawList = self.temp_item.p_list
 
     def start_scale(self):
-        if self.selected_id == '':  # 还没有选图元不做任何动作
+        if self.selected_id == '':
+            QMessageBox.warning(self, '注意', '请现在右侧选定图元', QMessageBox.Yes, QMessageBox.Yes)
             return
+        self.scale_factor = 1 # 防止上次操作的叠加
         self.status = 'scale'
         self.temp_item = self.item_dict[self.selected_id]  # 所要操作的是被选中图元
         self.rawList = self.temp_item.p_list
 
     def finish_draw(self):
         self.temp_item = None
-        self.temp_id = self.main_window.get_id()
+        self.temp_id = str(self.status) + self.main_window.get_id()
 
     def clear_selection(self):
         if self.selected_id != '':
@@ -104,6 +114,8 @@ class MyCanvas(QGraphicsView):
             self.item_dict[self.selected_id].selected = False
             self.item_dict[self.selected_id].update()
         self.selected_id = selected
+        if len(self.item_dict) == 0:
+            return
         self.item_dict[selected].selected = True
         self.item_dict[selected].update()
         self.status = ''
@@ -120,25 +132,33 @@ class MyCanvas(QGraphicsView):
 
         elif self.status == 'polygon':
             if self.temp_item is None:
+                print('a new polygon')
                 self.temp_item = MyItem(self.temp_id, self.status, [[x, y], [x, y]], self.temp_algorithm, self.main_window.pen_color)
                 self.scene().addItem(self.temp_item)
+                self.setMouseTracking(True) # 实时追踪鼠标位置
             else:
+                print(f"the p_list is {self.temp_item.p_list}")
                 if event.button() == QtCore.Qt.RightButton:  # 按下鼠标右键停止绘制多边形
                     self.add_item()
+                    self.setMouseTracking(False)
                 else:
                     self.temp_item.p_list.append([x, y])  # 按左键表示继续增加本多边形的参数点
 
         elif self.status == 'ellipse':
-            self.temp_item = MyItem(self.temp_id, self.status, [[x, y], [x, y]], self.main_window.pen_color)
+            self.temp_item = MyItem(self.temp_id, self.status, [[x, y], [x, y]], None, self.main_window.pen_color)
             self.scene().addItem(self.temp_item)
 
         elif self.status == 'curve':
             if self.temp_item is None:
+                print('a new curve')
                 self.temp_item = MyItem(self.temp_id, self.status, [[x, y], [x, y]], self.temp_algorithm, self.main_window.pen_color)
                 self.scene().addItem(self.temp_item)
+                self.setMouseTracking(True)  # 实时追踪鼠标位置
             else:
+                print(f"the p_list is {self.temp_item.p_list}")
                 if event.button() == QtCore.Qt.RightButton:  # 按下鼠标右键停止绘制多边形
                     self.add_item()
+                    self.setMouseTracking(False)
                 else:
                     self.temp_item.p_list.append([x, y])  # 按左键表示继续增加本曲线的控制点
 
@@ -172,6 +192,7 @@ class MyCanvas(QGraphicsView):
                 self.temp_item.p_list[-1] = [x, y]
         elif self.status == 'translate':
             self.temp_item.p_list = alg.translate(self.rawList, x - self.begin[0], y - self.begin[1])
+            print(f"the p_list is {self.temp_item.p_list}")
         elif self.status == 'rotate':
             pass
         elif self.status == 'scale':
@@ -203,6 +224,8 @@ class MyCanvas(QGraphicsView):
         super().mouseReleaseEvent(event)
 
     def wheelEvent(self, event: QtGui.QWheelEvent) -> None:  # 鼠标滚轮
+        if self.begin == []: # 还没有选择参考点
+            return
         if self.status == 'rotate':
             if event.angleDelta().y() > 0:
                 self.rotate_angel -= 1
@@ -216,6 +239,22 @@ class MyCanvas(QGraphicsView):
                 self.scale_factor -= 0.1
             self.temp_item.p_list = alg.scale(self.rawList, self.begin[0], self.begin[1], self.scale_factor)
         self.updateScene([self.sceneRect()])
+
+    def clearCanvas(self):
+        '''清空画布的所有图元，以及画布上的所有参数，用于重置画布时调用'''
+        for id in self.item_dict:
+            self.scene().removeItem(self.item_dict[id])
+        self.item_dict = {}
+        self.selected_id = ''
+
+        self.status = ''
+        self.temp_algorithm = ''
+        self.temp_id = ''
+        self.temp_item = None
+        self.begin = []  # 图形变换时选中的第一个控制点
+        self.rawList = []  # 图形变换时原图元控制参数
+        self.rotate_angel = 0  # 旋转角度
+        self.scale_factor = 1  # 缩放比例
 
 
 class MyItem(QGraphicsItem):
@@ -323,12 +362,16 @@ class MainWindow(QMainWindow):
         # 使用QListWidget来记录已有的图元，并用于选择图元。注：这是图元选择的简单实现方法，更好的实现是在画布中直接用鼠标选择图元
         self.list_widget = QListWidget(self)
         self.list_widget.setMinimumWidth(200)
+        # 设置画布大小
+        self.weight = 800
+        self.height = 800
 
         # 使用QGraphicsView作为画布
         self.scene = QGraphicsScene(self)
-        self.scene.setSceneRect(0, 0, 600, 600)
+        self.scene.setSceneRect(0, 0, self.weight, self.height)
         self.canvas_widget = MyCanvas(self.scene, self)
-        self.canvas_widget.setFixedSize(600, 600)
+        self.canvas_widget.setFixedSize(self.weight, self.height)
+        # self.canvas_widget.resize(self.weight, self.height)
         self.canvas_widget.main_window = self
         self.canvas_widget.list_widget = self.list_widget
         # 设置画笔
@@ -340,6 +383,7 @@ class MainWindow(QMainWindow):
         set_pen_act = file_menu.addAction('设置画笔')
         reset_canvas_act = file_menu.addAction('重置画布')
         exit_act = file_menu.addAction('退出')
+        save_canvas_act = file_menu.addAction('保存画布')
         draw_menu = menubar.addMenu('绘制')
         line_menu = draw_menu.addMenu('线段')
         line_naive_act = line_menu.addAction('Naive')
@@ -365,6 +409,7 @@ class MainWindow(QMainWindow):
         line_naive_act.triggered.connect(self.line_naive_action)
         self.list_widget.currentTextChanged.connect(self.canvas_widget.selection_changed)
         # TODO: 以下内容在11月修改
+        save_canvas_act.triggered.connect(self.save_canvas_action)
         set_pen_act.triggered.connect(self.set_pen_action)
         reset_canvas_act.triggered.connect(self.reset_canvas_action)
         line_dda_act.triggered.connect(self.line_dda_action)
@@ -388,7 +433,7 @@ class MainWindow(QMainWindow):
         self.central_widget.setLayout(self.hbox_layout)
         self.setCentralWidget(self.central_widget)
         self.statusBar().showMessage('空闲')
-        self.resize(600, 600)
+        self.resize(self.weight, self.height)
         self.setWindowTitle('CG Demo')
 
         # self.setbar = QToolBar()
@@ -414,12 +459,72 @@ class MainWindow(QMainWindow):
         _id = str(self.item_cnt)
         self.item_cnt += 1
         return _id
-    def reset_canvas_action(self):
+
+    def save_canvas_action(self):
         pass
+
+    def reset_canvas_action(self):
+        self.statusBar().showMessage('重置画布')
+        # 设置弹出窗口布局
+        dialog = QDialog()
+        dialog.setWindowTitle('重置画布')
+        formlayout = QFormLayout(dialog)
+        # 宽度和高度对话框及其对应的滑块
+        box1 = QSpinBox(dialog)
+        box1.setRange(100, 800) # 范围在[100, 800]
+        box1.setSingleStep(1)
+        box1.setValue(self.weight)
+        slider1 = QSlider(Qt.Horizontal)
+        slider1.setRange(100, 800)
+        slider1.setSingleStep(1)
+        slider1.setValue(self.weight)
+        slider1.setTickPosition(QSlider.TicksBelow)
+        slider1.setTickInterval(100)
+        box2 = QSpinBox(dialog)
+        box2.setRange(100, 800)
+        box2.setSingleStep(1)
+        box2.setValue(self.height)
+        slider2 = QSlider(Qt.Horizontal)
+        slider2.setRange(100, 800)
+        slider2.setSingleStep(1)
+        slider2.setValue(self.height)
+        slider2.setTickPosition(QSlider.TicksBelow)
+        slider2.setTickInterval(100)
+        slider1.valueChanged.connect(box1.setValue) # 滑块和box关联
+        box1.valueChanged.connect(slider1.setValue)
+        slider2.valueChanged.connect(box2.setValue)
+        box2.valueChanged.connect(slider2.setValue)
+        formlayout.addRow('宽度 ', box1)
+        formlayout.addRow(slider1)
+        formlayout.addRow('高度 ', box2)
+        formlayout.addRow(slider2)
+        # 确定取消按钮
+        box3 = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        box3.accepted.connect(dialog.accept)
+        box3.rejected.connect(dialog.reject)
+        formlayout.addRow(box3)
+
+        if dialog.exec():
+            self.weight = box1.value()
+            self.height = box2.value()
+            self.item_cnt = 0  # 清空图元
+            self.canvas_widget.clearCanvas() # 清空画布图元
+            self.list_widget.clearSelection() # 清除图元列表的选择
+            self.canvas_widget.clear_selection() # 清除画布的选择
+            self.list_widget.clear() # 清除图元列表
+            self.scene = QGraphicsScene(self)
+            self.scene.setSceneRect(0, 0, self.weight, self.height)
+            self.canvas_widget.resize(self.weight, self.height)
+            self.canvas_widget.setFixedSize(self.weight, self.height)
+            self.statusBar().showMessage('空闲')
+            self.setMaximumSize(self.weight, self.height)
+            self.resize(self.weight, self.height)
+            self.show()
+
 
     def set_pen_action(self):
         self.pen_color = QColorDialog.getColor()
-        print(f"color is : {self.pen_color}")
+        # print(f"color is : {self.pen_color}")
         self.statusBar().showMessage('设置画笔')
         self.list_widget.clearSelection()
         self.canvas_widget.clear_selection()
