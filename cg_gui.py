@@ -20,7 +20,8 @@ from PyQt5.QtWidgets import (
     QToolBar,
     QSpinBox,
     QLabel,
-    QStyleOptionGraphicsItem, QColorDialog, QDialog, QMessageBox, QDialogButtonBox, QSlider, QFormLayout)
+    QStyleOptionGraphicsItem, QColorDialog, QDialog, QMessageBox, QDialogButtonBox, QSlider, QFormLayout,
+    QDoubleSpinBox)
 
 import cg_algorithms as alg
 
@@ -44,7 +45,7 @@ class MyCanvas(QGraphicsView):
         self.begin = []  # 图形变换时选中的第一个控制点
         self.rawList = []  # 图形变换时原图元控制参数
 
-        self.rotate_angel = 0  # 旋转角度
+        self.rotate_angle = 0  # 旋转角度
         self.scale_factor = 1  # 缩放比例
 
     def start_draw_line(self, algorithm, item_id):
@@ -84,8 +85,7 @@ class MyCanvas(QGraphicsView):
         if  self.item_dict[self.selected_id].item_type == 'ellipse':  # 还没有选图元或者选椭圆不做任何动作
             QMessageBox.warning(self, '注意', '椭圆不提供旋转功能', QMessageBox.Yes, QMessageBox.Yes)
             return
-        # self.begin = []
-        self.rotate_angel = 0 # 从0开始防止上次旋转角度的叠加
+        self.rotate_angle = 0 # 从0开始防止上次旋转角度的叠加
         self.status = 'rotate'
         self.temp_item = self.item_dict[self.selected_id]  # 所要操作的是被选中图元
         self.rawList = self.temp_item.p_list
@@ -107,6 +107,10 @@ class MyCanvas(QGraphicsView):
         if self.selected_id != '':
             self.item_dict[self.selected_id].selected = False
             self.selected_id = ''
+        self.main_window.beginx_box.setEnabled(False)
+        self.main_window.beginy_box.setEnabled(False)
+        self.main_window.factor_box.setEnabled(False)
+        self.main_window.angle_box.setEnabled(False)
 
     def selection_changed(self, selected):
         self.main_window.statusBar().showMessage('图元选择： %s' % selected)
@@ -120,6 +124,18 @@ class MyCanvas(QGraphicsView):
         self.item_dict[selected].update()
         self.status = ''
         self.updateScene([self.sceneRect()])
+        self.main_window.angle_box.setValue(0) # 选择图元改变后从零开始
+        self.main_window.factor_box.setValue(1)
+        self.main_window.beginx_box.setEnabled(False)
+        self.main_window.beginy_box.setEnabled(False)
+        self.main_window.factor_box.setEnabled(False)
+        self.main_window.angle_box.setEnabled(False)
+
+    def set_attr_window(self, x, y):
+        self.main_window.beginx, self.main_window.beginy = x, y
+        self.begin = [x, y]
+        self.main_window.beginx_box.setValue(x)
+        self.main_window.beginy_box.setValue(y)
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
         print(f"the graph is {self.status}, the id is {self.temp_id}")
@@ -165,11 +181,11 @@ class MyCanvas(QGraphicsView):
         elif self.status == 'translate':
             self.begin = [x, y]
         elif self.status == 'rotate':
-            self.begin = [x, y]
-            self.rotate_angel = 0  # 每次选择新的旋转中心角度清零
+            self.set_attr_window(x, y)
+            self.rotate_angle = 0  # 每次选择新的旋转中心角度清零
         elif self.status == 'scale':
-            self.begin = [x, y]
-            self.scale_factor = 1  # 每次选择新的旋转中心角度清零
+            self.set_attr_window(x, y)
+            self.scale_factor = 1  # 每次选择新的缩放中心
 
         self.updateScene([self.sceneRect()])
         super().mousePressEvent(event)
@@ -228,16 +244,26 @@ class MyCanvas(QGraphicsView):
             return
         if self.status == 'rotate':
             if event.angleDelta().y() > 0:
-                self.rotate_angel -= 1
+                self.rotate_angle -= 1
+                self.main_window.angle = self.rotate_angle
+                self.main_window.angle_box.setValue(self.rotate_angle)
             elif event.angleDelta().y() < 0:
-                self.rotate_angel += 1
-            self.temp_item.p_list = alg.rotate(self.rawList, self.begin[0], self.begin[1], self.rotate_angel)
+                self.rotate_angle += 1
+                self.main_window.angle = self.rotate_angle
+                self.main_window.angle_box.setValue(self.rotate_angle)
+            self.temp_item.p_list = alg.rotate(self.rawList, self.begin[0], self.begin[1], self.rotate_angle)
+
         elif self.status == 'scale':
             if event.angleDelta().y() > 0:
                 self.scale_factor += 0.1
+                self.main_window.factor = self.scale_factor
+                self.main_window.factor_box.setValue(self.scale_factor)
             elif event.angleDelta().y() < 0:
                 self.scale_factor -= 0.1
+                self.main_window.factor = self.scale_factor
+                self.main_window.factor_box.setValue(self.scale_factor)
             self.temp_item.p_list = alg.scale(self.rawList, self.begin[0], self.begin[1], self.scale_factor)
+
         self.updateScene([self.sceneRect()])
 
     def clearCanvas(self):
@@ -253,7 +279,7 @@ class MyCanvas(QGraphicsView):
         self.temp_item = None
         self.begin = []  # 图形变换时选中的第一个控制点
         self.rawList = []  # 图形变换时原图元控制参数
-        self.rotate_angel = 0  # 旋转角度
+        self.rotate_angle = 0  # 旋转角度
         self.scale_factor = 1  # 缩放比例
 
 
@@ -435,25 +461,118 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage('空闲')
         self.resize(self.weight, self.height)
         self.setWindowTitle('CG Demo')
+        # 设置左侧的图形变换时的参数显示
+        self.beginx = 0
+        self.beginy = 0
+        self.angle = 0 # 旋转角度
+        self.factor = 1 # 缩放比例
+        self.setbar = QToolBar()
+        self.addToolBar(Qt.LeftToolBarArea, self.setbar)
 
-        # self.setbar = QToolBar()
-        # self.addToolBar(Qt.LeftToolBarArea, self.setbar)
-        #
-        # self.bezier_box = QSpinBox()
-        # self.bezier_box.setRange(3, 20)
-        # self.bezier_box.setSingleStep(1)
-        # self.bezier_box.setValue(1)
-        # self.setbar.addWidget(QLabel("Bezier控制点数"))
-        # self.setbar.addWidget(self.bezier_box)
-        # self.setbar.addSeparator()
-        # self.bspline_box = QSpinBox()
-        # self.bspline_box.setRange(4, 20)
-        # self.bspline_box.setSingleStep(1)
-        # self.bspline_box.setValue(2)
-        # self.setbar.addWidget(QLabel("B样条阶数"))
-        # self.setbar.addWidget(self.bspline_box)
-        # self.bezier_box.valueChanged.connect(self.set_bezier_num)
-        # self.bspline_box.valueChanged.connect(self.set_bspline_num)
+        self.beginx_box = QSpinBox()  # 横坐标
+        self.beginx_box.setRange(0, self.weight)
+        self.beginx_box.setSingleStep(1)
+        self.beginx_box.setValue(self.beginx)
+        self.beginy_box = QSpinBox()  # 纵坐标
+        self.beginy_box.setRange(0, self.height)
+        self.beginy_box.setSingleStep(1)
+        self.beginy_box.setValue(self.beginy)
+        self.angle_box = QSpinBox() # 旋转角度
+        self.angle_box.setRange(-7200, 7200)
+        self.angle_box.setSingleStep(1)
+        self.angle_box.setValue(self.angle)
+        self.factor_box = QDoubleSpinBox() # 缩放比例
+        self.factor_box.setRange(-10, 10)
+        self.factor_box.setSingleStep(0.1)
+        self.factor_box.setValue(self.factor)
+        # 布局
+        self.setbar.addWidget(QLabel("图形变换中心x坐标"))
+        self.setbar.addWidget(self.beginx_box)
+        self.setbar.addWidget(QLabel("图形变换中心y坐标"))
+        self.setbar.addWidget(self.beginy_box)
+        self.setbar.addWidget(QLabel("旋转角度"))
+        self.setbar.addWidget(self.angle_box)
+        self.setbar.addWidget(QLabel("缩放比例"))
+        self.setbar.addWidget(self.factor_box)
+
+        self.setbar.addSeparator() # 分隔
+
+        self.beginx_box.setEnabled(False)
+        self.beginy_box.setEnabled(False)
+        self.factor_box.setEnabled(False)
+        self.angle_box.setEnabled(False)
+
+        print(f"the begin is : {self.canvas_widget.begin}")
+        print(self.canvas_widget.begin)
+        self.beginx_box.valueChanged.connect(self.change_beginx)
+        self.beginy_box.valueChanged.connect(self.change_beginy)
+        self.angle_box.valueChanged.connect(self.change_angle)
+        self.factor_box.valueChanged.connect(self.change_factor)
+
+    def change_beginx(self):
+        print(f'x in box is {self.beginx_box.value()}')
+        # if self.canvas_widget.status == 'rotate':
+        if self.canvas_widget.selected_id == '':
+            self.beginx_box.setEnabled(False)
+        if self.canvas_widget.selected_id != '':
+            self.beginx_box.setEnabled(True)
+            self.canvas_widget.begin[0] = self.beginx_box.value()
+            self.canvas_widget.rotate_angle = 0
+            self.canvas_widget.scale_factor = 1
+            # self.angle_box.setValue(0)
+            # self.factor_box.setValue(1)
+            self.canvas_widget.rawList = self.canvas_widget.temp_item.p_list
+
+    def change_beginy(self):
+        print(f'y in box is {self.beginy_box.value()}')
+        # if self.canvas_widget.status == 'rotate':
+        if self.canvas_widget.selected_id == '':
+            self.beginy_box.setEnabled(False)
+        if self.canvas_widget.selected_id != '':
+            self.beginy_box.setEnabled(True)
+            self.canvas_widget.begin[1] = self.beginy_box.value()
+            self.canvas_widget.rotate_angle = 0
+            self.canvas_widget.scale_factor = 1
+            # self.angle_box.setValue(0)
+            # self.factor_box.setValue(1)
+            self.canvas_widget.rawList = self.canvas_widget.temp_item.p_list
+
+    def change_angle(self):
+        if self.canvas_widget.selected_id == '':
+            QMessageBox.warning(self, '注意', '请现在右侧选定图元', QMessageBox.Yes, QMessageBox.Yes)
+            return
+        # if self.canvas_widget.selected_id != '':
+        if self.canvas_widget.status == 'rotate':
+            self.angle_box.setEnabled(True)
+            self.angle_box.setVisible(True)
+            self.factor_box.hide()
+            self.factor_box.setEnabled(False)
+            if self.canvas_widget.temp_item is None:
+                self.rotate_action()
+            self.canvas_widget.rotate_angle = self.angle_box.value()
+            print(f"the angle after changing is {self.canvas_widget.rotate_angle}")
+            # self.canvas_widget.rawList = self.canvas_widget.temp_item.p_list
+            self.canvas_widget.temp_item.p_list = alg.rotate(self.canvas_widget.rawList, self.beginx,
+                                                             self.beginy, self.angle_box.value())
+            self.canvas_widget.updateScene([self.canvas_widget.sceneRect()])
+
+    def change_factor(self):
+        if self.canvas_widget.selected_id == '':
+            QMessageBox.warning(self, '注意', '请现在右侧选定图元', QMessageBox.Yes, QMessageBox.Yes)
+            return
+        # if self.canvas_widget.selected_id != '':
+        if self.canvas_widget.status == 'scale':
+            self.factor_box.setEnabled(True)
+            self.factor_box.setVisible(True)
+            self.angle_box.hide()
+            self.angle_box.setEnabled(False)
+            if self.canvas_widget.temp_item is None:
+                self.scale_action()
+            self.canvas_widget.scale_factor = self.factor_box.value()
+            # self.canvas_widget.rawList = self.canvas_widget.temp_item.p_list
+            self.canvas_widget.temp_item.p_list = alg.scale(self.canvas_widget.rawList, self.beginx,
+                                                             self.beginy, self.factor_box.value())
+            self.canvas_widget.updateScene([self.canvas_widget.sceneRect()])
 
     def get_id(self):
         _id = str(self.item_cnt)
@@ -519,6 +638,10 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage('空闲')
             self.setMaximumSize(self.weight, self.height)
             self.resize(self.weight, self.height)
+            self.beginx_box.setValue(0)
+            self.beginy_box.setValue(0)
+            self.angle_box.setValue(0)
+            self.factor_box.setValue(1)
             self.show()
 
 
@@ -567,13 +690,13 @@ class MainWindow(QMainWindow):
 
     def curve_bezier_action(self):
         self.canvas_widget.start_draw_curve('Bezier', self.get_id())
-        self.statusBar().showMessage('Bezier算法绘制曲线')
+        self.statusBar().showMessage('Bezier算法绘制曲线 (按鼠标右键结束绘制)')
         self.list_widget.clearSelection()
         self.canvas_widget.clear_selection()
 
     def curve_b_spline_action(self):
         self.canvas_widget.start_draw_curve('B-spline', self.get_id())
-        self.statusBar().showMessage('绘制B-spline曲线')
+        self.statusBar().showMessage('绘制B-spline曲线 (按鼠标右键结束绘制)')
         self.list_widget.clearSelection()
         self.canvas_widget.clear_selection()
 
