@@ -6,7 +6,7 @@ from typing import Optional
 
 from PyQt5 import QtCore, QtGui
 from PyQt5.QtCore import QRectF, Qt
-from PyQt5.QtGui import QPainter, QMouseEvent, QColor
+from PyQt5.QtGui import QPainter, QMouseEvent, QColor, QPixmap
 from PyQt5.QtWidgets import (
     QApplication,
     QMainWindow,
@@ -21,7 +21,7 @@ from PyQt5.QtWidgets import (
     QSpinBox,
     QLabel,
     QStyleOptionGraphicsItem, QColorDialog, QDialog, QMessageBox, QDialogButtonBox, QSlider, QFormLayout,
-    QDoubleSpinBox)
+    QDoubleSpinBox, QFileDialog)
 
 import cg_algorithms as alg
 
@@ -51,28 +51,28 @@ class MyCanvas(QGraphicsView):
     def start_draw_line(self, algorithm, item_id):
         self.status = 'line'
         self.temp_algorithm = algorithm
-        self.temp_id = 'line'+item_id
+        self.temp_id = 'line' + item_id
 
     # TODO: 以下内容为11月新修改
     def start_draw_polygon(self, algorithm, item_id):
         self.status = 'polygon'
         self.temp_algorithm = algorithm
-        self.temp_id = 'polygon'+item_id
-        self.temp_item = None # 防止p_list沿用上个多边形或者曲线的p_list
+        self.temp_id = 'polygon' + item_id
+        self.temp_item = None  # 防止p_list沿用上个多边形或者曲线的p_list
 
     def start_draw_ellipse(self, item_id):
         self.status = 'ellipse'
-        self.temp_id = 'ellipse'+item_id
+        self.temp_id = 'ellipse' + item_id
 
     def start_draw_curve(self, algorithm, item_id):
         self.status = 'curve'
         self.temp_algorithm = algorithm
-        self.temp_id = 'curve'+item_id
+        self.temp_id = 'curve' + item_id
         self.temp_item = None
 
     def start_translate(self):
         if self.selected_id == '':
-            QMessageBox.warning(self, '注意', '请现在右侧选定图元', QMessageBox.Yes, QMessageBox.Yes)
+            QMessageBox.warning(self, '注意', '请先在右侧选定图元', QMessageBox.Yes, QMessageBox.Yes)
             return
         self.status = 'translate'
         self.temp_item = self.item_dict[self.selected_id]  # 所要操作的是被选中图元
@@ -80,24 +80,34 @@ class MyCanvas(QGraphicsView):
 
     def start_rotate(self):
         if self.selected_id == '':
-            QMessageBox.warning(self, '注意', '请现在右侧选定图元', QMessageBox.Yes, QMessageBox.Yes)
+            QMessageBox.warning(self, '注意', '请先在右侧选定图元', QMessageBox.Yes, QMessageBox.Yes)
             return
-        if  self.item_dict[self.selected_id].item_type == 'ellipse':  # 还没有选图元或者选椭圆不做任何动作
+        if self.item_dict[self.selected_id].item_type == 'ellipse':  # 还没有选图元或者选椭圆不做任何动作
             QMessageBox.warning(self, '注意', '椭圆不提供旋转功能', QMessageBox.Yes, QMessageBox.Yes)
             return
-        self.rotate_angle = 0 # 从0开始防止上次旋转角度的叠加
+        self.rotate_angle = 0  # 从0开始防止上次旋转角度的叠加
         self.status = 'rotate'
         self.temp_item = self.item_dict[self.selected_id]  # 所要操作的是被选中图元
         self.rawList = self.temp_item.p_list
 
     def start_scale(self):
         if self.selected_id == '':
-            QMessageBox.warning(self, '注意', '请现在右侧选定图元', QMessageBox.Yes, QMessageBox.Yes)
+            QMessageBox.warning(self, '注意', '请先在右侧选定图元', QMessageBox.Yes, QMessageBox.Yes)
             return
-        self.scale_factor = 1 # 防止上次操作的叠加
+        self.scale_factor = 1  # 防止上次操作的叠加
         self.status = 'scale'
         self.temp_item = self.item_dict[self.selected_id]  # 所要操作的是被选中图元
         self.rawList = self.temp_item.p_list
+
+    def start_clip(self, algorithm):
+        if self.selected_id == '':
+            QMessageBox.warning(self, '注意', '请先在右侧选定图元', QMessageBox.Yes, QMessageBox.Yes)
+            return
+        if self.item_dict[self.selected_id].item_type != 'line':
+            QMessageBox.warning(self, '注意', '裁剪功能只针对线段才有效', QMessageBox.Yes, QMessageBox.Yes)
+            return
+        self.status = 'clip'
+        self.temp_algorithm = algorithm
 
     def finish_draw(self):
         self.temp_item = None
@@ -113,23 +123,36 @@ class MyCanvas(QGraphicsView):
         self.main_window.angle_box.setEnabled(False)
 
     def selection_changed(self, selected):
-        self.main_window.statusBar().showMessage('图元选择： %s' % selected)
-        if self.selected_id != '':
-            self.item_dict[self.selected_id].selected = False
-            self.item_dict[self.selected_id].update()
-        self.selected_id = selected
-        if len(self.item_dict) == 0:
-            return
-        self.item_dict[selected].selected = True
-        self.item_dict[selected].update()
-        self.status = ''
-        self.updateScene([self.sceneRect()])
-        self.main_window.angle_box.setValue(0) # 选择图元改变后从零开始
-        self.main_window.factor_box.setValue(1)
-        self.main_window.beginx_box.setEnabled(False)
-        self.main_window.beginy_box.setEnabled(False)
-        self.main_window.factor_box.setEnabled(False)
-        self.main_window.angle_box.setEnabled(False)
+        if selected != '' and selected != self.selected_id and self.item_dict.__contains__(selected):
+            self.main_window.statusBar().showMessage('图元选择： %s' % selected)
+            if self.selected_id != '':
+                self.item_dict[self.selected_id].selected = False
+                self.item_dict[self.selected_id].update()
+            self.selected_id = selected
+            if len(self.item_dict) == 0:
+                return
+            self.item_dict[selected].selected = True
+            self.item_dict[selected].update()
+            self.status = ''
+            self.updateScene([self.sceneRect()])
+            self.main_window.angle_box.setValue(0)  # 选择图元改变后从零开始
+            self.main_window.factor_box.setValue(1)
+            self.main_window.beginx_box.setEnabled(False)
+            self.main_window.beginy_box.setEnabled(False)
+            self.main_window.factor_box.setEnabled(False)
+            self.main_window.angle_box.setEnabled(False)
+
+    def save_canvas(self, filename, weight, height):
+        # https://stackoverflow.com/questions/49565928/applying-qgraphicview-transform-to-saved-image
+        # https://cloud.tencent.com/developer/article/1741675
+        painter = QPainter()
+        pixmap = QPixmap(weight, height)
+        pixmap.fill(QColor(255, 255, 255))  # 涂满白色
+        painter.begin(pixmap)
+        for item in self.item_dict:
+            self.item_dict[item].paint(painter, QStyleOptionGraphicsItem)
+        painter.end()
+        pixmap.save(filename)
 
     def set_attr_window(self, x, y):
         self.main_window.beginx, self.main_window.beginy = x, y
@@ -143,15 +166,17 @@ class MyCanvas(QGraphicsView):
         x = int(pos.x())
         y = int(pos.y())
         if self.status == 'line':
-            self.temp_item = MyItem(self.temp_id, self.status, [[x, y], [x, y]], self.temp_algorithm, self.main_window.pen_color)
+            self.temp_item = MyItem(self.temp_id, self.status, [[x, y], [x, y]], self.temp_algorithm,
+                                    self.main_window.pen_color)
             self.scene().addItem(self.temp_item)
 
         elif self.status == 'polygon':
             if self.temp_item is None:
                 print('a new polygon')
-                self.temp_item = MyItem(self.temp_id, self.status, [[x, y], [x, y]], self.temp_algorithm, self.main_window.pen_color)
+                self.temp_item = MyItem(self.temp_id, self.status, [[x, y], [x, y]], self.temp_algorithm,
+                                        self.main_window.pen_color)
                 self.scene().addItem(self.temp_item)
-                self.setMouseTracking(True) # 实时追踪鼠标位置
+                self.setMouseTracking(True)  # 实时追踪鼠标位置
             else:
                 print(f"the p_list is {self.temp_item.p_list}")
                 if event.button() == QtCore.Qt.RightButton:  # 按下鼠标右键停止绘制多边形
@@ -167,7 +192,8 @@ class MyCanvas(QGraphicsView):
         elif self.status == 'curve':
             if self.temp_item is None:
                 print('a new curve')
-                self.temp_item = MyItem(self.temp_id, self.status, [[x, y], [x, y]], self.temp_algorithm, self.main_window.pen_color)
+                self.temp_item = MyItem(self.temp_id, self.status, [[x, y], [x, y]], self.temp_algorithm,
+                                        self.main_window.pen_color)
                 self.scene().addItem(self.temp_item)
                 self.setMouseTracking(True)  # 实时追踪鼠标位置
             else:
@@ -180,12 +206,19 @@ class MyCanvas(QGraphicsView):
 
         elif self.status == 'translate':
             self.begin = [x, y]
+
         elif self.status == 'rotate':
             self.set_attr_window(x, y)
             self.rotate_angle = 0  # 每次选择新的旋转中心角度清零
+
         elif self.status == 'scale':
             self.set_attr_window(x, y)
             self.scale_factor = 1  # 每次选择新的缩放中心
+
+        elif self.status == 'clip':
+            self.temp_item = MyItem(None, 'polygon', [(x, y), (x, y), (x, y), (x, y)], 'DDA',
+                                    QColor(0, 255, 0))  # 裁剪时画一个矩形框
+            self.scene().addItem(self.temp_item)
 
         self.updateScene([self.sceneRect()])
         super().mousePressEvent(event)
@@ -213,6 +246,9 @@ class MyCanvas(QGraphicsView):
             pass
         elif self.status == 'scale':
             pass
+        elif self.status == 'clip':
+            x0, y0 = self.temp_item.p_list[0]  # 裁剪矩形的一个顶点
+            self.temp_item.p_list = [[x0, y0], [x0, y], [x, y], [x, y0]]  # 改变裁剪矩形框的顶点参数
         self.updateScene([self.sceneRect()])
         super().mouseMoveEvent(event)
 
@@ -220,6 +256,16 @@ class MyCanvas(QGraphicsView):
         self.item_dict[self.temp_id] = self.temp_item
         self.list_widget.addItem(self.temp_id)
         self.finish_draw()
+
+    def delete_item(self):  # 删除当前selected的图元
+        self.scene().removeItem(self.item_dict.pop(self.selected_id))
+        self.selected_id = ''
+        self.list_widget.takeItem(self.list_widget.row(self.list_widget.selectedItems()[0]))
+        self.list_widget.selectionModel().clear()
+        self.clear_selection()
+        self.main_window.statusBar().showMessage('空闲')
+        self.status = ''
+        print(f"has deleted the line item!")
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:
         if self.status == 'line':
@@ -237,10 +283,25 @@ class MyCanvas(QGraphicsView):
             self.rawList = self.temp_item.p_list
         elif self.status == 'scale':
             self.rawList = self.temp_item.p_list
+        elif self.status == 'clip':
+            x_min, y_min = self.temp_item.p_list[0]
+            x_max, y_max = self.temp_item.p_list[2]
+            if x_min > x_max:
+                x_max, x_min = x_min, x_max
+            if y_min > y_max:
+                y_max, y_min = y_min, y_max
+            theline = self.item_dict[self.selected_id]
+            theline.p_list = alg.clip(theline.p_list, x_min, y_min, x_max, y_max, self.temp_algorithm)
+            self.scene().removeItem(self.temp_item)
+            if len(theline.p_list) == 0:
+                self.delete_item()
+
+            self.updateScene([self.sceneRect()])
+
         super().mouseReleaseEvent(event)
 
     def wheelEvent(self, event: QtGui.QWheelEvent) -> None:  # 鼠标滚轮
-        if self.begin == []: # 还没有选择参考点
+        if self.begin == []:  # 还没有选择参考点
             return
         if self.status == 'rotate':
             if event.angleDelta().y() > 0:
@@ -288,7 +349,8 @@ class MyItem(QGraphicsItem):
     自定义图元类，继承自QGraphicsItem
     """
 
-    def __init__(self, item_id: str, item_type: str, p_list: list, algorithm: str = '', color=QColor(0, 0, 0), parent: QGraphicsItem = None):
+    def __init__(self, item_id: str, item_type: str, p_list: list, algorithm: str = '', color=QColor(0, 0, 0),
+                 parent: QGraphicsItem = None):
         """
 
         :param item_id: 图元ID
@@ -303,9 +365,10 @@ class MyItem(QGraphicsItem):
         self.p_list = p_list  # 图元参数
         self.algorithm = algorithm  # 绘制算法，'DDA'、'Bresenham'、'Bezier'、'B-spline'等
         self.selected = False
-        self.color = color #画笔颜色
+        self.color = color  # 画笔颜色
 
     def paint(self, painter: QPainter, option: QStyleOptionGraphicsItem, widget: Optional[QWidget] = ...) -> None:
+        if len(self.p_list) == 0: return
         if self.item_type == 'line':
             item_pixels = alg.draw_line(self.p_list, self.algorithm)
             for p in item_pixels:
@@ -343,6 +406,7 @@ class MyItem(QGraphicsItem):
                 painter.drawRect(self.boundingRect(item_pixels))
 
     def boundingRect(self, item_pixels=None) -> QRectF:
+        if len(self.p_list) == 0: return QRectF()
         if self.item_type == 'line':
             x0, y0 = self.p_list[0]
             x1, y1 = self.p_list[1]
@@ -389,8 +453,8 @@ class MainWindow(QMainWindow):
         self.list_widget = QListWidget(self)
         self.list_widget.setMinimumWidth(200)
         # 设置画布大小
-        self.weight = 800
-        self.height = 800
+        self.weight = 900
+        self.height = 900
 
         # 使用QGraphicsView作为画布
         self.scene = QGraphicsScene(self)
@@ -400,6 +464,8 @@ class MainWindow(QMainWindow):
         # self.canvas_widget.resize(self.weight, self.height)
         self.canvas_widget.main_window = self
         self.canvas_widget.list_widget = self.list_widget
+        self.canvas_widget.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        self.canvas_widget.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
         # 设置画笔
         self.pen_color = QColor(0, 0, 0)
 
@@ -408,8 +474,8 @@ class MainWindow(QMainWindow):
         file_menu = menubar.addMenu('文件')
         set_pen_act = file_menu.addAction('设置画笔')
         reset_canvas_act = file_menu.addAction('重置画布')
-        exit_act = file_menu.addAction('退出')
         save_canvas_act = file_menu.addAction('保存画布')
+        exit_act = file_menu.addAction('退出')
         draw_menu = menubar.addMenu('绘制')
         line_menu = draw_menu.addMenu('线段')
         line_naive_act = line_menu.addAction('Naive')
@@ -464,8 +530,8 @@ class MainWindow(QMainWindow):
         # 设置左侧的图形变换时的参数显示
         self.beginx = 0
         self.beginy = 0
-        self.angle = 0 # 旋转角度
-        self.factor = 1 # 缩放比例
+        self.angle = 0  # 旋转角度
+        self.factor = 1  # 缩放比例
         self.setbar = QToolBar()
         self.addToolBar(Qt.LeftToolBarArea, self.setbar)
 
@@ -477,11 +543,11 @@ class MainWindow(QMainWindow):
         self.beginy_box.setRange(0, self.height)
         self.beginy_box.setSingleStep(1)
         self.beginy_box.setValue(self.beginy)
-        self.angle_box = QSpinBox() # 旋转角度
+        self.angle_box = QSpinBox()  # 旋转角度
         self.angle_box.setRange(-7200, 7200)
         self.angle_box.setSingleStep(1)
         self.angle_box.setValue(self.angle)
-        self.factor_box = QDoubleSpinBox() # 缩放比例
+        self.factor_box = QDoubleSpinBox()  # 缩放比例
         self.factor_box.setRange(-10, 10)
         self.factor_box.setSingleStep(0.1)
         self.factor_box.setValue(self.factor)
@@ -495,7 +561,7 @@ class MainWindow(QMainWindow):
         self.setbar.addWidget(QLabel("缩放比例"))
         self.setbar.addWidget(self.factor_box)
 
-        self.setbar.addSeparator() # 分隔
+        self.setbar.addSeparator()  # 分隔
 
         self.beginx_box.setEnabled(False)
         self.beginy_box.setEnabled(False)
@@ -539,7 +605,7 @@ class MainWindow(QMainWindow):
 
     def change_angle(self):
         if self.canvas_widget.selected_id == '':
-            QMessageBox.warning(self, '注意', '请现在右侧选定图元', QMessageBox.Yes, QMessageBox.Yes)
+            QMessageBox.warning(self, '注意', '请先在右侧选定图元', QMessageBox.Yes, QMessageBox.Yes)
             return
         # if self.canvas_widget.selected_id != '':
         if self.canvas_widget.status == 'rotate':
@@ -558,7 +624,7 @@ class MainWindow(QMainWindow):
 
     def change_factor(self):
         if self.canvas_widget.selected_id == '':
-            QMessageBox.warning(self, '注意', '请现在右侧选定图元', QMessageBox.Yes, QMessageBox.Yes)
+            QMessageBox.warning(self, '注意', '请先在右侧选定图元', QMessageBox.Yes, QMessageBox.Yes)
             return
         # if self.canvas_widget.selected_id != '':
         if self.canvas_widget.status == 'scale':
@@ -571,7 +637,7 @@ class MainWindow(QMainWindow):
             self.canvas_widget.scale_factor = self.factor_box.value()
             # self.canvas_widget.rawList = self.canvas_widget.temp_item.p_list
             self.canvas_widget.temp_item.p_list = alg.scale(self.canvas_widget.rawList, self.beginx,
-                                                             self.beginy, self.factor_box.value())
+                                                            self.beginy, self.factor_box.value())
             self.canvas_widget.updateScene([self.canvas_widget.sceneRect()])
 
     def get_id(self):
@@ -580,7 +646,13 @@ class MainWindow(QMainWindow):
         return _id
 
     def save_canvas_action(self):
-        pass
+        self.list_widget.clearSelection()
+        self.canvas_widget.clear_selection()
+        self.statusBar().showMessage('保存画布')
+        dialog = QFileDialog()
+        filename = dialog.getSaveFileName(filter="Image Files(*.jpg *.png *.bmp)")
+        if filename[0]:
+            self.canvas_widget.save_canvas(filename[0], self.weight, self.height)
 
     def reset_canvas_action(self):
         self.statusBar().showMessage('重置画布')
@@ -590,7 +662,7 @@ class MainWindow(QMainWindow):
         formlayout = QFormLayout(dialog)
         # 宽度和高度对话框及其对应的滑块
         box1 = QSpinBox(dialog)
-        box1.setRange(100, 800) # 范围在[100, 800]
+        box1.setRange(100, 800)  # 范围在[100, 800]
         box1.setSingleStep(1)
         box1.setValue(self.weight)
         slider1 = QSlider(Qt.Horizontal)
@@ -609,7 +681,7 @@ class MainWindow(QMainWindow):
         slider2.setValue(self.height)
         slider2.setTickPosition(QSlider.TicksBelow)
         slider2.setTickInterval(100)
-        slider1.valueChanged.connect(box1.setValue) # 滑块和box关联
+        slider1.valueChanged.connect(box1.setValue)  # 滑块和box关联
         box1.valueChanged.connect(slider1.setValue)
         slider2.valueChanged.connect(box2.setValue)
         box2.valueChanged.connect(slider2.setValue)
@@ -627,23 +699,24 @@ class MainWindow(QMainWindow):
             self.weight = box1.value()
             self.height = box2.value()
             self.item_cnt = 0  # 清空图元
-            self.canvas_widget.clearCanvas() # 清空画布图元
-            self.list_widget.clearSelection() # 清除图元列表的选择
-            self.canvas_widget.clear_selection() # 清除画布的选择
-            self.list_widget.clear() # 清除图元列表
+            self.canvas_widget.clearCanvas()  # 清空画布图元
+            self.list_widget.clearSelection()  # 清除图元列表的选择
+            self.canvas_widget.clear_selection()  # 清除画布的选择
+            self.list_widget.clear()  # 清除图元列表
             self.scene = QGraphicsScene(self)
             self.scene.setSceneRect(0, 0, self.weight, self.height)
             self.canvas_widget.resize(self.weight, self.height)
             self.canvas_widget.setFixedSize(self.weight, self.height)
             self.statusBar().showMessage('空闲')
-            self.setMaximumSize(self.weight, self.height)
+            # self.setMaximumSize(self.weight, self.height)
+            self.setMaximumHeight(self.height)
+            self.setMaximumWidth(self.weight)
             self.resize(self.weight, self.height)
             self.beginx_box.setValue(0)
             self.beginy_box.setValue(0)
             self.angle_box.setValue(0)
             self.factor_box.setValue(1)
             self.show()
-
 
     def set_pen_action(self):
         self.pen_color = QColorDialog.getColor()
@@ -713,12 +786,12 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage('缩放操作')
 
     def clip_cohen_sutherland_action(self):
-        self.canvas_widget.start_clip_cohen_sutherland()
         self.statusBar().showMessage('Cohen-Sutherland算法裁剪操作')
+        self.canvas_widget.start_clip('Cohen-Sutherland')
 
     def clip_liang_barsky_action(self):
-        self.canvas_widget.start_clip_liang_barsky()
         self.statusBar().showMessage('Liang-Barsky算法裁剪操作')
+        self.canvas_widget.start_clip('Liang-Barsky')
 
 
 if __name__ == '__main__':
