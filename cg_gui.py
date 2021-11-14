@@ -227,6 +227,8 @@ class MyCanvas(QGraphicsView):
         pos = self.mapToScene(event.localPos().toPoint())
         x = int(pos.x())
         y = int(pos.y())
+        if self.temp_item is None:
+            return
         if self.status == 'line':
             self.temp_item.p_list[1] = [x, y]
         # TODO: 11月修改
