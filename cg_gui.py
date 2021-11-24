@@ -6,7 +6,7 @@ from typing import Optional
 
 from PyQt5 import QtCore, QtGui
 from PyQt5.QtCore import QRectF, Qt
-from PyQt5.QtGui import QPainter, QMouseEvent, QColor, QPixmap
+from PyQt5.QtGui import QPainter, QMouseEvent, QColor, QPixmap, QIcon
 from PyQt5.QtWidgets import (
     QApplication,
     QMainWindow,
@@ -54,6 +54,12 @@ class MyCanvas(QGraphicsView):
         self.temp_id = 'line' + item_id
 
     # TODO: 以下内容为11月新修改
+    def start_fill_polygon(self, item_id):
+        self.status = 'fill_polygon'
+        self.temp_algorithm = 'DDA'
+        self.temp_id = 'fill_polygon' + item_id
+        self.temp_item = None
+
     def start_draw_polygon(self, algorithm, item_id):
         self.status = 'polygon'
         self.temp_algorithm = algorithm
@@ -99,6 +105,12 @@ class MyCanvas(QGraphicsView):
         self.temp_item = self.item_dict[self.selected_id]  # 所要操作的是被选中图元
         self.rawList = self.temp_item.p_list
 
+    def start_remove(self):
+        if self.selected_id == '':
+            QMessageBox.warning(self, '注意', '请先在右侧选定图元', QMessageBox.Yes, QMessageBox.Yes)
+            return
+        self.delete_item()
+
     def start_clip(self, algorithm):
         if self.selected_id == '':
             QMessageBox.warning(self, '注意', '请先在右侧选定图元', QMessageBox.Yes, QMessageBox.Yes)
@@ -131,6 +143,8 @@ class MyCanvas(QGraphicsView):
             self.selected_id = selected
             if len(self.item_dict) == 0:
                 return
+            if self.item_dict[selected] is None:
+                self.delete_item()
             self.item_dict[selected].selected = True
             self.item_dict[selected].update()
             self.status = ''
@@ -143,8 +157,6 @@ class MyCanvas(QGraphicsView):
             self.main_window.angle_box.setEnabled(False)
 
     def save_canvas(self, filename, weight, height):
-        # https://stackoverflow.com/questions/49565928/applying-qgraphicview-transform-to-saved-image
-        # https://cloud.tencent.com/developer/article/1741675
         painter = QPainter()
         pixmap = QPixmap(weight, height)
         pixmap.fill(QColor(255, 255, 255))  # 涂满白色
@@ -170,7 +182,7 @@ class MyCanvas(QGraphicsView):
                                     self.main_window.pen_color)
             self.scene().addItem(self.temp_item)
 
-        elif self.status == 'polygon':
+        elif self.status == 'polygon' or self.status == 'fill_polygon': # 增加填充多边形
             if self.temp_item is None:
                 print('a new polygon')
                 self.temp_item = MyItem(self.temp_id, self.status, [[x, y], [x, y]], self.temp_algorithm,
@@ -232,7 +244,7 @@ class MyCanvas(QGraphicsView):
         if self.status == 'line':
             self.temp_item.p_list[1] = [x, y]
         # TODO: 11月修改
-        elif self.status == 'polygon':
+        elif self.status == 'polygon' or self.status == 'fill_polygon':
             if self.temp_item is not None:
                 self.temp_item.p_list[-1] = [x, y]
         elif self.status == 'ellipse':
@@ -262,6 +274,7 @@ class MyCanvas(QGraphicsView):
     def delete_item(self):  # 删除当前selected的图元
         self.scene().removeItem(self.item_dict.pop(self.selected_id))
         self.selected_id = ''
+        self.temp_id = ''
         self.list_widget.takeItem(self.list_widget.row(self.list_widget.selectedItems()[0]))
         self.list_widget.selectionModel().clear()
         self.clear_selection()
@@ -273,7 +286,7 @@ class MyCanvas(QGraphicsView):
         if self.status == 'line':
             self.add_item()
         # TODO: 11月修改
-        elif self.status == 'polygon':
+        elif self.status == 'polygon' or self.status == 'fill_polygon':
             pass
         elif self.status == 'ellipse':
             self.add_item()
@@ -292,9 +305,10 @@ class MyCanvas(QGraphicsView):
                 x_max, x_min = x_min, x_max
             if y_min > y_max:
                 y_max, y_min = y_min, y_max
+            self.scene().removeItem(self.temp_item)
             theline = self.item_dict[self.selected_id]
             theline.p_list = alg.clip(theline.p_list, x_min, y_min, x_max, y_max, self.temp_algorithm)
-            self.scene().removeItem(self.temp_item)
+
             if len(theline.p_list) == 0:
                 self.delete_item()
 
@@ -373,39 +387,22 @@ class MyItem(QGraphicsItem):
         if len(self.p_list) == 0: return
         if self.item_type == 'line':
             item_pixels = alg.draw_line(self.p_list, self.algorithm)
-            for p in item_pixels:
-                painter.setPen(self.color)
-                painter.drawPoint(*p)
-            if self.selected:
-                painter.setPen(QColor(255, 0, 0))
-                painter.drawRect(self.boundingRect())
-
         elif self.item_type == 'polygon':
             item_pixels = alg.draw_polygon(self.p_list, self.algorithm)
-            for p in item_pixels:
-                painter.setPen(self.color)
-                painter.drawPoint(*p)
-            if self.selected:
-                painter.setPen(QColor(255, 0, 0))
-                painter.drawRect(self.boundingRect())
-
+        elif self.item_type == 'fill_polygon':
+            item_pixels = alg.fill_polygon(self.p_list)
         elif self.item_type == 'ellipse':
             item_pixels = alg.draw_ellipse(self.p_list)
-            for p in item_pixels:
-                painter.setPen(self.color)
-                painter.drawPoint(*p)
-            if self.selected:
-                painter.setPen(QColor(255, 0, 0))
-                painter.drawRect(self.boundingRect())
-
         elif self.item_type == 'curve':
             item_pixels = alg.draw_curve(self.p_list, self.algorithm)
-            for p in item_pixels:
-                painter.setPen(self.color)
-                painter.drawPoint(*p)
-            if self.selected:
-                painter.setPen(QColor(255, 0, 0))
-                painter.drawRect(self.boundingRect(item_pixels))
+
+        for p in item_pixels:
+            painter.setPen(self.color)
+            painter.drawPoint(*p)
+        if self.selected:
+            painter.setPen(QColor(255, 0, 0))
+            painter.drawRect(self.boundingRect())
+
 
     def boundingRect(self, item_pixels=None) -> QRectF:
         if len(self.p_list) == 0: return QRectF()
@@ -417,7 +414,7 @@ class MyItem(QGraphicsItem):
             w = max(x0, x1) - x
             h = max(y0, y1) - y
             return QRectF(x - 1, y - 1, w + 2, h + 2)
-        elif self.item_type == 'polygon':
+        elif self.item_type == 'polygon' or self.item_type == 'fill_polygon':
             x_list = [p[0] for p in self.p_list]
             y_list = [p[1] for p in self.p_list]
             x_min, x_max = min(x_list), max(x_list)
@@ -484,6 +481,7 @@ class MainWindow(QMainWindow):
         line_dda_act = line_menu.addAction('DDA')
         line_bresenham_act = line_menu.addAction('Bresenham')
         polygon_menu = draw_menu.addMenu('多边形')
+        fill_act = draw_menu.addAction('填充多边形')
         polygon_dda_act = polygon_menu.addAction('DDA')
         polygon_bresenham_act = polygon_menu.addAction('Bresenham')
         ellipse_act = draw_menu.addAction('椭圆')
@@ -494,6 +492,8 @@ class MainWindow(QMainWindow):
         translate_act = edit_menu.addAction('平移')
         rotate_act = edit_menu.addAction('旋转')
         scale_act = edit_menu.addAction('缩放')
+        remove_act = edit_menu.addAction('删除')
+
         clip_menu = edit_menu.addMenu('裁剪')
         clip_cohen_sutherland_act = clip_menu.addAction('Cohen-Sutherland')
         clip_liang_barsky_act = clip_menu.addAction('Liang-Barsky')
@@ -516,8 +516,11 @@ class MainWindow(QMainWindow):
         translate_act.triggered.connect(self.translate_action)
         rotate_act.triggered.connect(self.rotate_action)
         scale_act.triggered.connect(self.scale_action)
+        remove_act.triggered.connect(self.remove_action)
         clip_cohen_sutherland_act.triggered.connect(self.clip_cohen_sutherland_action)
         clip_liang_barsky_act.triggered.connect(self.clip_liang_barsky_action)
+
+        fill_act.triggered.connect(self.fill_action)
 
         # 设置主窗口的布局
         self.hbox_layout = QHBoxLayout()
@@ -528,7 +531,8 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self.central_widget)
         self.statusBar().showMessage('空闲')
         self.resize(self.weight, self.height)
-        self.setWindowTitle('CG Demo')
+        self.setWindowTitle('CG 画图')
+        self.setWindowIcon(QIcon('./icon.png'))
         # 设置左侧的图形变换时的参数显示
         self.beginx = 0
         self.beginy = 0
@@ -576,6 +580,7 @@ class MainWindow(QMainWindow):
         self.beginy_box.valueChanged.connect(self.change_beginy)
         self.angle_box.valueChanged.connect(self.change_angle)
         self.factor_box.valueChanged.connect(self.change_factor)
+
 
     def change_beginx(self):
         print(f'x in box is {self.beginx_box.value()}')
@@ -664,21 +669,21 @@ class MainWindow(QMainWindow):
         formlayout = QFormLayout(dialog)
         # 宽度和高度对话框及其对应的滑块
         box1 = QSpinBox(dialog)
-        box1.setRange(100, 800)  # 范围在[100, 800]
+        box1.setRange(100, 900)  # 范围在[100, 800]
         box1.setSingleStep(1)
         box1.setValue(self.weight)
         slider1 = QSlider(Qt.Horizontal)
-        slider1.setRange(100, 800)
+        slider1.setRange(100, 900)
         slider1.setSingleStep(1)
         slider1.setValue(self.weight)
         slider1.setTickPosition(QSlider.TicksBelow)
         slider1.setTickInterval(100)
         box2 = QSpinBox(dialog)
-        box2.setRange(100, 800)
+        box2.setRange(100, 900)
         box2.setSingleStep(1)
         box2.setValue(self.height)
         slider2 = QSlider(Qt.Horizontal)
-        slider2.setRange(100, 800)
+        slider2.setRange(100, 900)
         slider2.setSingleStep(1)
         slider2.setValue(self.height)
         slider2.setTickPosition(QSlider.TicksBelow)
@@ -701,9 +706,9 @@ class MainWindow(QMainWindow):
             self.weight = box1.value()
             self.height = box2.value()
             self.item_cnt = 0  # 清空图元
-            self.canvas_widget.clearCanvas()  # 清空画布图元
             self.list_widget.clearSelection()  # 清除图元列表的选择
             self.canvas_widget.clear_selection()  # 清除画布的选择
+            self.canvas_widget.clearCanvas()  # 清空画布图元
             self.list_widget.clear()  # 清除图元列表
             self.scene = QGraphicsScene(self)
             self.scene.setSceneRect(0, 0, self.weight, self.height)
@@ -719,6 +724,8 @@ class MainWindow(QMainWindow):
             self.angle_box.setValue(0)
             self.factor_box.setValue(1)
             self.show()
+
+
 
     def set_pen_action(self):
         self.pen_color = QColorDialog.getColor()
@@ -757,6 +764,12 @@ class MainWindow(QMainWindow):
         self.list_widget.clearSelection()
         self.canvas_widget.clear_selection()
 
+    def fill_action(self):
+        self.canvas_widget.start_fill_polygon(self.get_id())
+        self.statusBar().showMessage('绘制填充多边形 (按鼠标右键结束绘制)')
+        self.list_widget.clearSelection()
+        self.canvas_widget.clear_selection()
+
     def ellipse_action(self):
         self.canvas_widget.start_draw_ellipse(self.get_id())
         self.statusBar().showMessage('绘制椭圆')
@@ -775,22 +788,41 @@ class MainWindow(QMainWindow):
         self.list_widget.clearSelection()
         self.canvas_widget.clear_selection()
 
+    def unable_box(func): # 在类里定义一个装饰器装饰函数
+        def wrapper(self):
+            self.beginx_box.setEnabled(False)
+            self.beginy_box.setEnabled(False)
+            self.factor_box.setEnabled(False)
+            self.angle_box.setEnabled(False)
+            return func(self)
+        return wrapper
+
+    @unable_box
     def translate_action(self):
         self.canvas_widget.start_translate()
         self.statusBar().showMessage('平移操作')
 
+    @unable_box
     def rotate_action(self):
         self.canvas_widget.start_rotate()
         self.statusBar().showMessage('旋转操作')
 
+    @unable_box
     def scale_action(self):
         self.canvas_widget.start_scale()
         self.statusBar().showMessage('缩放操作')
 
+    @unable_box
+    def remove_action(self):
+        self.canvas_widget.start_remove()
+        self.statusBar().showMessage('删除操作')
+
+    @unable_box
     def clip_cohen_sutherland_action(self):
         self.statusBar().showMessage('Cohen-Sutherland算法裁剪操作')
         self.canvas_widget.start_clip('Cohen-Sutherland')
 
+    @unable_box
     def clip_liang_barsky_action(self):
         self.statusBar().showMessage('Liang-Barsky算法裁剪操作')
         self.canvas_widget.start_clip('Liang-Barsky')

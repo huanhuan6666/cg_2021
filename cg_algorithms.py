@@ -296,3 +296,98 @@ def clip(p_list, x_min, y_min, x_max, y_max, algorithm):
             return []
         return [[round(x1 + u1 * (x2 - x1)), round(y1 + u1 * (y2 - y1))],
                 [round(x1 + u2 * (x2 - x1)), round(y1 + u2 * (y2 - y1))]]
+
+
+class Node:
+    def __init__(self, x=0, dx=0.0, y_max=0, nxt=None):
+        self.x = x
+        self.dx = dx
+        self.y_max = y_max
+        self.next = nxt
+
+    def set_next(self, nxt):
+        self.next = nxt
+
+def create_net(y_max, y_min, p_list, n):
+    NET = []
+    for i in range(0, y_max + 1):
+        node = Node()
+        NET.append(node)
+    for i in range(y_min, y_max + 1):  # 从下到上创建NET
+        for j in range(0, n):
+            if p_list[j][1] == i:  # 遇到一个顶点将其作为边中的较低点
+                x0, y0 = p_list[j]
+                x1, y1 = p_list[(j - 1 + n) % n]  # 左右两条边
+                if y1 > y0:
+                    node = Node(x0, float((x1 - x0) / (y1 - y0)), y1, NET[i].next)
+                    NET[i].set_next(node)
+                x1, y1 = p_list[(j + 1 + n) % n]
+                if y1 > y0:
+                    node = Node(x0, float((x1 - x0) / (y1 - y0)), y1, NET[i].next)
+                    NET[i].set_next(node)
+    return NET
+
+def fill_polygon(p_list):
+    result = []
+    y_max, y_min = -9999, 9999
+    for x, y in p_list:
+        if y > y_max:
+            y_max = y
+        if y < y_min:
+            y_min = y
+
+
+    AET = Node()
+
+    n = len(p_list)
+    NET = create_net(y_max, y_min, p_list, n) # 创建NET
+
+    for i in range(y_min, y_max + 1): # 从下到上处理扫描线
+        node1 = NET[i].next
+        node2 = AET
+        while node1 is not None: # 将NET对应边插入AET中,并在插入时对x进行排序
+            while node2.next is not None and node1.x >= node2.next.x:
+                node2 = node2.next
+            temp = node1.next
+            node1.set_next(node2.next)
+            node2.set_next(node1)
+            node1 = temp
+            node2 = AET
+
+        node1 = AET # 删除y_max == y_k的边否则保留
+        node2 = node1.next
+        while node2 is not None:
+            if node2.y_max == i:
+                node1.set_next(node2.next)
+                node2 = node1.next
+            else:
+                node1 = node1.next
+                node2 = node2.next
+
+        node = AET.next
+
+        while node is not None: # 计算AET中扫描线和边交点的横坐标x = x + 1/m
+            node.x = node.x + node.dx
+            node = node.next
+
+        node1 = AET # 对AET表按照x重新排序
+        node2 = AET.next
+        node1.set_next(None)
+        while node2 is not None:
+            while node1.next is not None and node2.x >= node1.next.x:
+                node1 = node1.next
+            temp = node2.next
+            node2.set_next(node1.next)
+            node1.set_next(node2)
+            node2 = temp
+            node1 = AET
+
+        node = AET.next
+        while node is not None and node.next is not None:
+            x = int(node.x)
+            while x <= node.next.x:
+                result.append([x, i])
+                x = x + 1
+            node = node.next.next # 将一对点之间的像素点加入到结果中
+
+    return result
