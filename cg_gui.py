@@ -164,7 +164,7 @@ class MyCanvas(QGraphicsView):
         for item in self.item_dict:
             self.item_dict[item].paint(painter, QStyleOptionGraphicsItem)
         painter.end()
-        pixmap.save(filename)
+        pixmap.save(filename, "bmp", 100)
 
     def set_attr_window(self, x, y):
         self.main_window.beginx, self.main_window.beginy = x, y
