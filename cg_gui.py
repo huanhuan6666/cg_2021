@@ -6,7 +6,7 @@ from typing import Optional
 
 from PyQt5 import QtCore, QtGui
 from PyQt5.QtCore import QRectF, Qt
-from PyQt5.QtGui import QPainter, QMouseEvent, QColor, QPixmap, QIcon
+from PyQt5.QtGui import QPainter, QMouseEvent, QColor, QPixmap, QIcon, QPen
 from PyQt5.QtWidgets import (
     QApplication,
     QMainWindow,
@@ -21,7 +21,7 @@ from PyQt5.QtWidgets import (
     QSpinBox,
     QLabel,
     QStyleOptionGraphicsItem, QColorDialog, QDialog, QMessageBox, QDialogButtonBox, QSlider, QFormLayout,
-    QDoubleSpinBox, QFileDialog)
+    QDoubleSpinBox, QFileDialog, QInputDialog)
 
 import cg_algorithms as alg
 
@@ -173,24 +173,24 @@ class MyCanvas(QGraphicsView):
         self.main_window.beginy_box.setValue(y)
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
-        print(f"the graph is {self.status}, the id is {self.temp_id}")
+        # print(f"the graph is {self.status}, the id is {self.temp_id}")
         pos = self.mapToScene(event.localPos().toPoint())
         x = int(pos.x())
         y = int(pos.y())
         if self.status == 'line':
             self.temp_item = MyItem(self.temp_id, self.status, [[x, y], [x, y]], self.temp_algorithm,
-                                    self.main_window.pen_color)
+                                    self.main_window.pen_color, self.main_window.pen_width)
             self.scene().addItem(self.temp_item)
 
         elif self.status == 'polygon' or self.status == 'fill_polygon': # 增加填充多边形
             if self.temp_item is None:
-                print('a new polygon')
+                # print('a new polygon')
                 self.temp_item = MyItem(self.temp_id, self.status, [[x, y], [x, y]], self.temp_algorithm,
-                                        self.main_window.pen_color)
+                                        self.main_window.pen_color, self.main_window.pen_width)
                 self.scene().addItem(self.temp_item)
                 self.setMouseTracking(True)  # 实时追踪鼠标位置
             else:
-                print(f"the p_list is {self.temp_item.p_list}")
+                # print(f"the p_list is {self.temp_item.p_list}")
                 if event.button() == QtCore.Qt.RightButton:  # 按下鼠标右键停止绘制多边形
                     self.add_item()
                     self.setMouseTracking(False)
@@ -198,18 +198,19 @@ class MyCanvas(QGraphicsView):
                     self.temp_item.p_list.append([x, y])  # 按左键表示继续增加本多边形的参数点
 
         elif self.status == 'ellipse':
-            self.temp_item = MyItem(self.temp_id, self.status, [[x, y], [x, y]], None, self.main_window.pen_color)
+            self.temp_item = MyItem(self.temp_id, self.status, [[x, y], [x, y]], None,
+                                    self.main_window.pen_color, self.main_window.pen_width)
             self.scene().addItem(self.temp_item)
 
         elif self.status == 'curve':
             if self.temp_item is None:
-                print('a new curve')
+                # print('a new curve')
                 self.temp_item = MyItem(self.temp_id, self.status, [[x, y], [x, y]], self.temp_algorithm,
-                                        self.main_window.pen_color)
+                                        self.main_window.pen_color, self.main_window.pen_width)
                 self.scene().addItem(self.temp_item)
                 self.setMouseTracking(True)  # 实时追踪鼠标位置
             else:
-                print(f"the p_list is {self.temp_item.p_list}")
+                # print(f"the p_list is {self.temp_item.p_list}")
                 if event.button() == QtCore.Qt.RightButton:  # 按下鼠标右键停止绘制多边形
                     self.add_item()
                     self.setMouseTracking(False)
@@ -255,7 +256,7 @@ class MyCanvas(QGraphicsView):
                 self.temp_item.p_list[-1] = [x, y]
         elif self.status == 'translate':
             self.temp_item.p_list = alg.translate(self.rawList, x - self.begin[0], y - self.begin[1])
-            print(f"the p_list is {self.temp_item.p_list}")
+            # print(f"the p_list is {self.temp_item.p_list}")
         elif self.status == 'rotate':
             pass
         elif self.status == 'scale':
@@ -280,7 +281,7 @@ class MyCanvas(QGraphicsView):
         self.clear_selection()
         self.main_window.statusBar().showMessage('空闲')
         self.status = ''
-        print(f"has deleted the line item!")
+        # print(f"has deleted the line item!")
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:
         if self.status == 'line':
@@ -365,7 +366,7 @@ class MyItem(QGraphicsItem):
     自定义图元类，继承自QGraphicsItem
     """
 
-    def __init__(self, item_id: str, item_type: str, p_list: list, algorithm: str = '', color=QColor(0, 0, 0),
+    def __init__(self, item_id: str, item_type: str, p_list: list, algorithm: str = '', color=QColor(0, 0, 0), width = 1,
                  parent: QGraphicsItem = None):
         """
 
@@ -382,6 +383,7 @@ class MyItem(QGraphicsItem):
         self.algorithm = algorithm  # 绘制算法，'DDA'、'Bresenham'、'Bezier'、'B-spline'等
         self.selected = False
         self.color = color  # 画笔颜色
+        self.width = width # 画笔宽度
 
     def paint(self, painter: QPainter, option: QStyleOptionGraphicsItem, widget: Optional[QWidget] = ...) -> None:
         if len(self.p_list) == 0: return
@@ -397,7 +399,7 @@ class MyItem(QGraphicsItem):
             item_pixels = alg.draw_curve(self.p_list, self.algorithm)
 
         for p in item_pixels:
-            painter.setPen(self.color)
+            painter.setPen(QPen(self.color, self.width))
             painter.drawPoint(*p)
         if self.selected:
             painter.setPen(QColor(255, 0, 0))
@@ -467,11 +469,14 @@ class MainWindow(QMainWindow):
         self.canvas_widget.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
         # 设置画笔
         self.pen_color = QColor(0, 0, 0)
+        self.pen_width = 1
 
         # 设置菜单栏
         menubar = self.menuBar()
         file_menu = menubar.addMenu('文件')
-        set_pen_act = file_menu.addAction('设置画笔')
+        set_pen_menu = file_menu.addMenu('设置画笔')
+        set_pen_act = set_pen_menu.addAction('设置画笔颜色')
+        set_pen_width_act = set_pen_menu.addAction('设置画笔宽度')
         reset_canvas_act = file_menu.addAction('重置画布')
         save_canvas_act = file_menu.addAction('保存画布')
         exit_act = file_menu.addAction('退出')
@@ -505,6 +510,7 @@ class MainWindow(QMainWindow):
         # TODO: 以下内容在11月修改
         save_canvas_act.triggered.connect(self.save_canvas_action)
         set_pen_act.triggered.connect(self.set_pen_action)
+        set_pen_width_act.triggered.connect(self.set_pen_width_action)
         reset_canvas_act.triggered.connect(self.reset_canvas_action)
         line_dda_act.triggered.connect(self.line_dda_action)
         line_bresenham_act.triggered.connect(self.line_bresenham_action)
@@ -574,8 +580,8 @@ class MainWindow(QMainWindow):
         self.factor_box.setEnabled(False)
         self.angle_box.setEnabled(False)
 
-        print(f"the begin is : {self.canvas_widget.begin}")
-        print(self.canvas_widget.begin)
+        # print(f"the begin is : {self.canvas_widget.begin}")
+        # print(self.canvas_widget.begin)
         self.beginx_box.valueChanged.connect(self.change_beginx)
         self.beginy_box.valueChanged.connect(self.change_beginy)
         self.angle_box.valueChanged.connect(self.change_angle)
@@ -583,7 +589,7 @@ class MainWindow(QMainWindow):
 
 
     def change_beginx(self):
-        print(f'x in box is {self.beginx_box.value()}')
+        # print(f'x in box is {self.beginx_box.value()}')
         # if self.canvas_widget.status == 'rotate':
         if self.canvas_widget.selected_id == '':
             self.beginx_box.setEnabled(False)
@@ -597,7 +603,7 @@ class MainWindow(QMainWindow):
             self.canvas_widget.rawList = self.canvas_widget.temp_item.p_list
 
     def change_beginy(self):
-        print(f'y in box is {self.beginy_box.value()}')
+        # print(f'y in box is {self.beginy_box.value()}')
         # if self.canvas_widget.status == 'rotate':
         if self.canvas_widget.selected_id == '':
             self.beginy_box.setEnabled(False)
@@ -623,7 +629,7 @@ class MainWindow(QMainWindow):
             if self.canvas_widget.temp_item is None:
                 self.rotate_action()
             self.canvas_widget.rotate_angle = self.angle_box.value()
-            print(f"the angle after changing is {self.canvas_widget.rotate_angle}")
+            # print(f"the angle after changing is {self.canvas_widget.rotate_angle}")
             # self.canvas_widget.rawList = self.canvas_widget.temp_item.p_list
             self.canvas_widget.temp_item.p_list = alg.rotate(self.canvas_widget.rawList, self.beginx,
                                                              self.beginy, self.angle_box.value())
@@ -733,6 +739,11 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage('设置画笔')
         self.list_widget.clearSelection()
         self.canvas_widget.clear_selection()
+
+    def set_pen_width_action(self):
+        width, ok = QInputDialog.getInt(self, '调整粗细', '输入画笔粗细', value=1, min=1, max=10)
+        if ok and width > 0:
+            self.pen_width = width
 
     def line_naive_action(self):
         self.canvas_widget.start_draw_line('Naive', self.get_id())
