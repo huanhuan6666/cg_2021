@@ -308,6 +308,7 @@ class Node:
     def set_next(self, nxt):
         self.next = nxt
 
+
 def create_net(y_max, y_min, p_list, n):
     NET = []
     for i in range(0, y_max + 1):
@@ -327,6 +328,7 @@ def create_net(y_max, y_min, p_list, n):
                     NET[i].set_next(node)
     return NET
 
+
 def fill_polygon(p_list):
     result = []
     y_max, y_min = -9999, 9999
@@ -336,16 +338,15 @@ def fill_polygon(p_list):
         if y < y_min:
             y_min = y
 
-
     AET = Node()
 
     n = len(p_list)
-    NET = create_net(y_max, y_min, p_list, n) # 创建NET
+    NET = create_net(y_max, y_min, p_list, n)  # 创建NET
 
-    for i in range(y_min, y_max + 1): # 从下到上处理扫描线
+    for i in range(y_min, y_max + 1):  # 从下到上处理扫描线
         node1 = NET[i].next
         node2 = AET
-        while node1 is not None: # 将NET对应边插入AET中,并在插入时对x进行排序
+        while node1 is not None:  # 将NET对应边插入AET中,并在插入时对x进行排序
             while node2.next is not None and node1.x >= node2.next.x:
                 node2 = node2.next
             temp = node1.next
@@ -354,7 +355,7 @@ def fill_polygon(p_list):
             node1 = temp
             node2 = AET
 
-        node1 = AET # 删除y_max == y_k的边否则保留
+        node1 = AET  # 删除y_max == y_k的边否则保留
         node2 = node1.next
         while node2 is not None:
             if node2.y_max == i:
@@ -366,11 +367,11 @@ def fill_polygon(p_list):
 
         node = AET.next
 
-        while node is not None: # 计算AET中扫描线和边交点的横坐标x = x + 1/m
+        while node is not None:  # 计算AET中扫描线和边交点的横坐标x = x + 1/m
             node.x = node.x + node.dx
             node = node.next
 
-        node1 = AET # 对AET表按照x重新排序
+        node1 = AET  # 对AET表按照x重新排序
         node2 = AET.next
         node1.set_next(None)
         while node2 is not None:
@@ -388,6 +389,82 @@ def fill_polygon(p_list):
             while x <= node.next.x:
                 result.append([x, i])
                 x = x + 1
-            node = node.next.next # 将一对点之间的像素点加入到结果中
+            node = node.next.next  # 将一对点之间的像素点加入到结果中
 
+    return result
+
+
+def is_inside(p1, p2, q):
+    """
+    判断点q是否在线段p1p2的内侧
+    """
+    R = (p2[0] - p1[0]) * (q[1] - p1[1]) - (p2[1] - p1[1]) * (q[0] - p1[0])
+    if R <= 0:
+        return True
+    else:
+        return False
+
+
+def compute_intersection(p1, p2, p3, p4):
+    """
+    计算p1p2和p3p4两条线段的交点
+    """
+    if p2[0] - p1[0] == 0:
+        x = p1[0]
+        m2 = (p4[1] - p3[1]) / (p4[0] - p3[0])
+        b2 = p3[1] - m2 * p3[0]
+        y = m2 * x + b2
+
+    elif p4[0] - p3[0] == 0:
+        x = p3[0]
+        m1 = (p2[1] - p1[1]) / (p2[0] - p1[0])
+        b1 = p1[1] - m1 * p1[0]
+        y = m1 * x + b1
+    else:
+        m1 = (p2[1] - p1[1]) / (p2[0] - p1[0])
+        b1 = p1[1] - m1 * p1[0]
+
+        m2 = (p4[1] - p3[1]) / (p4[0] - p3[0])
+        b2 = p3[1] - m2 * p3[0]
+
+        x = (b2 - b1) / (m1 - m2)
+        y = m1 * x + b1
+
+    return [x, y]
+
+
+def clip_polygon(p_list, clip_list):
+    """
+    p_list是被裁减多边形的顶点参数
+    clip_list是裁剪窗口的顶点参数
+    返回裁剪后的多边形的顶点参数
+    """
+    result = p_list.copy()
+
+    for i in range(len(clip_list)):
+        # 一条边一条边迭代裁剪
+        next_polygon = result.copy()
+
+        result = []
+
+        # 下面两个点确定裁剪窗口的一条边
+        c_edge_start = clip_list[i - 1]
+        c_edge_end = clip_list[i]
+
+        for j in range(len(next_polygon)):
+
+            # 下面两个点确定被裁减多边形的一条边
+            s_edge_start = next_polygon[j - 1]
+            s_edge_end = next_polygon[j]
+
+            if is_inside(c_edge_start, c_edge_end, s_edge_end):
+                if not is_inside(c_edge_start, c_edge_end, s_edge_start): #终点在窗口内起点在窗口外
+                    intersection = compute_intersection(s_edge_start, s_edge_end, c_edge_start, c_edge_end)
+                    result.append(intersection)
+                result.append(s_edge_end) # 结果为交点和终点
+            elif is_inside(c_edge_start, c_edge_end, s_edge_start): # 终点在外起点在窗口内
+                intersection = compute_intersection(s_edge_start, s_edge_end, c_edge_start, c_edge_end)
+                result.append(intersection)
+
+    result = [[round(p[0]), round(p[1])] for p in result]
     return result

@@ -116,10 +116,20 @@ class MyCanvas(QGraphicsView):
             QMessageBox.warning(self, '注意', '请先在右侧选定图元', QMessageBox.Yes, QMessageBox.Yes)
             return
         if self.item_dict[self.selected_id].item_type != 'line':
-            QMessageBox.warning(self, '注意', '裁剪功能只针对线段才有效', QMessageBox.Yes, QMessageBox.Yes)
+            QMessageBox.warning(self, '注意', '线段裁剪功能只针对线段才有效', QMessageBox.Yes, QMessageBox.Yes)
             return
         self.status = 'clip'
         self.temp_algorithm = algorithm
+
+    def start_clip_polygon(self):
+        if self.selected_id == '':
+            QMessageBox.warning(self, '注意', '请先在右侧选定图元', QMessageBox.Yes, QMessageBox.Yes)
+            return
+        if self.item_dict[self.selected_id].item_type != 'polygon' \
+                and self.item_dict[self.selected_id].item_type != 'fill_polygon':
+            QMessageBox.warning(self, '注意', '多边形裁剪功能只针对多边形才有效', QMessageBox.Yes, QMessageBox.Yes)
+            return
+        self.status = 'clip_polygon'
 
     def finish_draw(self):
         self.temp_item = None
@@ -228,7 +238,7 @@ class MyCanvas(QGraphicsView):
             self.set_attr_window(x, y)
             self.scale_factor = 1  # 每次选择新的缩放中心
 
-        elif self.status == 'clip':
+        elif self.status == 'clip' or self.status == 'clip_polygon':
             self.temp_item = MyItem(None, 'polygon', [(x, y), (x, y), (x, y), (x, y)], 'DDA',
                                     QColor(0, 255, 0))  # 裁剪时画一个矩形框
             self.scene().addItem(self.temp_item)
@@ -261,7 +271,7 @@ class MyCanvas(QGraphicsView):
             pass
         elif self.status == 'scale':
             pass
-        elif self.status == 'clip':
+        elif self.status == 'clip' or self.status == 'clip_polygon':
             x0, y0 = self.temp_item.p_list[0]  # 裁剪矩形的一个顶点
             self.temp_item.p_list = [[x0, y0], [x0, y], [x, y], [x, y0]]  # 改变裁剪矩形框的顶点参数
         self.updateScene([self.sceneRect()])
@@ -309,17 +319,32 @@ class MyCanvas(QGraphicsView):
             self.scene().removeItem(self.temp_item)
             theline = self.item_dict[self.selected_id]
             theline.p_list = alg.clip(theline.p_list, x_min, y_min, x_max, y_max, self.temp_algorithm)
-
             if len(theline.p_list) == 0:
                 self.delete_item()
 
+        elif self.status == 'clip_polygon':
+            x_min, y_min = self.temp_item.p_list[0]
+            x_max, y_max = self.temp_item.p_list[2]
+            if x_min > x_max:
+                x_max, x_min = x_min, x_max
+            if y_min > y_max:
+                y_max, y_min = y_min, y_max
+            self.scene().removeItem(self.temp_item)
+            thepolygon = self.item_dict[self.selected_id]
+            # print(f'!poly_list is {thepolygon.p_list}')
+            thepolygon.p_list = alg.clip_polygon(thepolygon.p_list,
+                                                 [[x_min, y_min], [x_min, y_max], [x_max, y_max], [x_max, y_min]])
+            # print(f'!!poly_list is {thepolygon.p_list}')
             self.updateScene([self.sceneRect()])
-
+            if len(thepolygon.p_list) == 0:
+                self.delete_item()
+        self.updateScene([self.sceneRect()])
         super().mouseReleaseEvent(event)
 
     def wheelEvent(self, event: QtGui.QWheelEvent) -> None:  # 鼠标滚轮
         if self.begin == []:  # 还没有选择参考点
             return
+        self.begin = self.main_window.beginx, self.main_window.beginy
         if self.status == 'rotate':
             if event.angleDelta().y() > 0:
                 self.rotate_angle -= 1
@@ -359,6 +384,7 @@ class MyCanvas(QGraphicsView):
         self.rawList = []  # 图形变换时原图元控制参数
         self.rotate_angle = 0  # 旋转角度
         self.scale_factor = 1  # 缩放比例
+        self.updateScene([self.sceneRect()])
 
 
 class MyItem(QGraphicsItem):
@@ -499,9 +525,11 @@ class MainWindow(QMainWindow):
         scale_act = edit_menu.addAction('缩放')
         remove_act = edit_menu.addAction('删除')
 
-        clip_menu = edit_menu.addMenu('裁剪')
+        clip_menu_raw = edit_menu.addMenu('裁剪')
+        clip_menu = clip_menu_raw.addMenu('线段裁剪')
         clip_cohen_sutherland_act = clip_menu.addAction('Cohen-Sutherland')
         clip_liang_barsky_act = clip_menu.addAction('Liang-Barsky')
+        clip_polygon_act = clip_menu_raw.addAction('多边形裁剪')
 
         # 连接信号和槽函数
         exit_act.triggered.connect(qApp.quit)
@@ -525,7 +553,7 @@ class MainWindow(QMainWindow):
         remove_act.triggered.connect(self.remove_action)
         clip_cohen_sutherland_act.triggered.connect(self.clip_cohen_sutherland_action)
         clip_liang_barsky_act.triggered.connect(self.clip_liang_barsky_action)
-
+        clip_polygon_act.triggered.connect(self.clip_polygon_action)
         fill_act.triggered.connect(self.fill_action)
 
         # 设置主窗口的布局
@@ -838,6 +866,10 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage('Liang-Barsky算法裁剪操作')
         self.canvas_widget.start_clip('Liang-Barsky')
 
+    @unable_box
+    def clip_polygon_action(self):
+        self.statusBar().showMessage('多边形裁剪操作')
+        self.canvas_widget.start_clip_polygon()
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
